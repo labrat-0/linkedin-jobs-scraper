@@ -1,6 +1,7 @@
 {
     "actorOutputSchemaVersion": 1,
-    "fields": {
+    "type": "object",
+    "properties": {
         "url": {
             "type": "string",
             "title": "Job URL",
