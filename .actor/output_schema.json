@@ -1,11 +1,12 @@
 {
     "actorOutputSchemaVersion": 1,
-    "type": "object",
+    "title": "LinkedIn Jobs Scraper Results",
+    "description": "Job listings scraped from LinkedIn.",
     "properties": {
-        "url": {
+        "results": {
             "type": "string",
-            "title": "Job URL",
-            "description": "Direct URL to the LinkedIn job posting."
+            "title": "Results",
+            "template": "{{links.apiDefaultDatasetUrl}}/items"
         }
     }
 }
