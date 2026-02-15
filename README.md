@@ -1,10 +1,10 @@
 # LinkedIn Jobs Scraper
 
-Scrape LinkedIn job listings at scale. No API keys, no browser, no login required. Fast, lightweight HTTP-based scraping with structured output.
+Scrape LinkedIn job listings at scale. No API keys, no browser, no login required. Fast, lightweight HTTP-based scraping with structured output. MCP-ready for AI agent integration.
 
 ## What it does
 
-This actor scrapes job listings from LinkedIn's public job search pages. It extracts job titles, companies, locations, salaries, posting dates, and optionally fetches full job details including descriptions, seniority level, employment type, job function, and industries.
+This actor scrapes job listings from LinkedIn's public job search pages. It extracts job titles, companies, locations, salaries, posting dates, and optionally fetches full job details including descriptions, seniority level, employment type, job function, and industries. Returns clean JSON with consistent fields -- ready for analysis, job market research, or consumption by AI agents via MCP.
 
 ## Key features
 
@@ -14,6 +14,7 @@ This actor scrapes job listings from LinkedIn's public job search pages. It extr
 - **Full job details** -- optionally loads each job's detail page for complete descriptions, seniority level, employment type, job function, industries, and applicant count
 - **Structured output** -- clean JSON with consistent fields, ready for analysis or integration
 - **Salary extraction** -- captures salary data when LinkedIn displays it
+- **AI agent tooling** -- expose as an MCP tool so AI agents can search LinkedIn jobs, track hiring trends, and pull job market data in real time
 
 ## Input parameters
 
@@ -86,3 +87,38 @@ With pay-per-event pricing at **$0.50 per 1,000 results**:
 - **Lead generation** -- find companies actively hiring in your space
 - **Career planning** -- aggregate and compare job listings across locations and industries
 - **Academic research** -- analyze labor market data at scale
+- **AI agent tooling** -- expose as an MCP tool so AI agents can search job listings, compare salaries, and monitor hiring trends in real time
+
+---
+
+## MCP Integration
+
+This actor works as an MCP tool through Apify's hosted MCP server. No custom server needed.
+
+- **Endpoint:** `https://mcp.apify.com?tools=labrat011/linkedin-jobs-scraper`
+- **Auth:** `Authorization: Bearer <APIFY_TOKEN>`
+- **Transport:** Streamable HTTP
+- **Works with:** Claude Desktop, Cursor, VS Code, Windsurf, Warp, Gemini CLI
+
+**Example MCP config (Claude Desktop / Cursor):**
+
+```json
+{
+    "mcpServers": {
+        "linkedin-jobs-scraper": {
+            "url": "https://mcp.apify.com?tools=labrat011/linkedin-jobs-scraper",
+            "headers": {
+                "Authorization": "Bearer <APIFY_TOKEN>"
+            }
+        }
+    }
+}
+```
+
+AI agents can use this actor to search LinkedIn job listings, track salary trends, monitor hiring activity, and pull structured job market data -- all as a callable MCP tool.
+
+---
+
+## Feedback
+
+Found a bug or have a feature request? Open an issue on the actor's Issues tab in Apify Console.
