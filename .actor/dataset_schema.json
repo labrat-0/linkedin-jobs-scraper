@@ -1,0 +1,34 @@
+{
+    "actorSpecification": 1,
+    "fields": {},
+    "views": {
+        "overview": {
+            "title": "Overview",
+            "transformation": {
+                "fields": [
+                    "title",
+                    "company",
+                    "location",
+                    "salary",
+                    "postedDate",
+                    "seniorityLevel",
+                    "employmentType",
+                    "url"
+                ]
+            },
+            "display": {
+                "component": "table",
+                "properties": {
+                    "title": { "label": "Title", "format": "text" },
+                    "company": { "label": "Company", "format": "text" },
+                    "location": { "label": "Location", "format": "text" },
+                    "salary": { "label": "Salary", "format": "text" },
+                    "postedDate": { "label": "Posted", "format": "text" },
+                    "seniorityLevel": { "label": "Seniority", "format": "text" },
+                    "employmentType": { "label": "Type", "format": "text" },
+                    "url": { "label": "URL", "format": "link" }
+                }
+            }
+        }
+    }
+}

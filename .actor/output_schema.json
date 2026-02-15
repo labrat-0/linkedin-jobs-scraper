@@ -1,0 +1,10 @@
+{
+    "actorSpecification": 1,
+    "fields": {
+        "url": {
+            "type": "string",
+            "title": "Job URL",
+            "description": "Direct URL to the LinkedIn job posting."
+        }
+    }
+}

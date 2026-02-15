@@ -1,0 +1,106 @@
+{
+    "title": "LinkedIn Jobs Scraper Input",
+    "description": "Configure what to scrape from LinkedIn Jobs. Provide keywords, location, and optional filters.",
+    "type": "object",
+    "schemaVersion": 1,
+    "properties": {
+        "keywords": {
+            "sectionCaption": "Search Parameters",
+            "sectionDescription": "Define what jobs to search for. At least keywords or location is required.",
+            "title": "Keywords",
+            "type": "string",
+            "description": "Job search keywords (e.g. 'python developer', 'data engineer', 'product manager').",
+            "editor": "textfield",
+            "prefill": "python developer"
+        },
+        "location": {
+            "title": "Location",
+            "type": "string",
+            "description": "Location to search for jobs (e.g. 'United States', 'San Francisco, CA', 'Remote').",
+            "editor": "textfield",
+            "prefill": "United States"
+        },
+        "geoId": {
+            "title": "Geo ID (optional)",
+            "type": "string",
+            "description": "LinkedIn geographic ID for precise location filtering. Example: 103644278 for United States. Overrides text location if provided.",
+            "editor": "textfield"
+        },
+        "datePosted": {
+            "sectionCaption": "Filters",
+            "sectionDescription": "Narrow results by date, job type, experience level, and work arrangement.",
+            "title": "Date posted",
+            "type": "string",
+            "description": "Filter jobs by when they were posted.",
+            "editor": "select",
+            "enum": ["", "past_24_hours", "past_week", "past_month"],
+            "enumTitles": ["Any time", "Past 24 hours", "Past week", "Past month"],
+            "default": ""
+        },
+        "jobType": {
+            "title": "Job type",
+            "type": "string",
+            "description": "Filter by job type.",
+            "editor": "select",
+            "enum": ["", "F", "P", "C", "T", "V", "I", "O"],
+            "enumTitles": ["Any", "Full-time", "Part-time", "Contract", "Temporary", "Volunteer", "Internship", "Other"],
+            "default": ""
+        },
+        "experienceLevel": {
+            "title": "Experience level",
+            "type": "string",
+            "description": "Filter by experience level.",
+            "editor": "select",
+            "enum": ["", "1", "2", "3", "4", "5", "6"],
+            "enumTitles": ["Any", "Internship", "Entry level", "Associate", "Mid-Senior level", "Director", "Executive"],
+            "default": ""
+        },
+        "workType": {
+            "title": "Work arrangement",
+            "type": "string",
+            "description": "Filter by on-site, remote, or hybrid.",
+            "editor": "select",
+            "enum": ["", "1", "2", "3"],
+            "enumTitles": ["Any", "On-site", "Remote", "Hybrid"],
+            "default": ""
+        },
+        "salary": {
+            "title": "Minimum salary",
+            "type": "string",
+            "description": "Filter by minimum salary range (USD).",
+            "editor": "select",
+            "enum": ["", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
+            "enumTitles": ["Any", "$40,000+", "$60,000+", "$80,000+", "$100,000+", "$120,000+", "$140,000+", "$160,000+", "$180,000+", "$200,000+"],
+            "default": ""
+        },
+        "fetchJobDetails": {
+            "sectionCaption": "Scraper Settings",
+            "sectionDescription": "Control output depth, limits, and proxy configuration.",
+            "title": "Fetch full job details",
+            "type": "boolean",
+            "description": "For each job, load the full detail page to extract description, salary, seniority level, employment type, job function, and industries. This is slower and uses more proxy traffic but gives much richer data.",
+            "default": true
+        },
+        "maxResults": {
+            "title": "Max results",
+            "type": "integer",
+            "description": "Maximum number of job listings to return. LinkedIn caps search results at 1,000 per query. Free users are limited to 25 per run.",
+            "default": 100,
+            "minimum": 1,
+            "maximum": 1000
+        },
+        "proxyConfiguration": {
+            "sectionCaption": "Proxy Configuration",
+            "sectionDescription": "LinkedIn may block datacenter IPs. Residential proxies are recommended for reliability.",
+            "title": "Proxy configuration",
+            "type": "object",
+            "description": "Proxy settings. Residential proxies are recommended for reliable scraping.",
+            "editor": "proxy",
+            "prefill": {
+                "useApifyProxy": true,
+                "apifyProxyGroups": ["RESIDENTIAL"]
+            }
+        }
+    },
+    "required": []
+}
