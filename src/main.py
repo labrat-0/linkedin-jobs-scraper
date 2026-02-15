@@ -38,6 +38,7 @@ async def main() -> None:
         max_results = config.max_results
         if not is_paying and os.environ.get("APIFY_IS_AT_HOME") == "1":
             max_results = min(max_results, FREE_TIER_LIMIT)
+            config.max_results = max_results  # propagate limit to scraper
             Actor.log.info(
                 f"Free tier: limited to {FREE_TIER_LIMIT} results. "
                 "Subscribe to the actor for unlimited results."

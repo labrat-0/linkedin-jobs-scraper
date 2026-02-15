@@ -92,6 +92,10 @@ async def fetch_html(
             )
 
             if response.status_code == 200:
+                logger.debug(
+                    f"OK 200 | url={url} | length={len(response.text)} | "
+                    f"content_type={response.headers.get('content-type', 'unknown')}"
+                )
                 return response.text
 
             if response.status_code == 429:

@@ -29,55 +29,28 @@ class LinkedInJobsScraper:
         self.config = config
 
     async def scrape(self) -> AsyncIterator[dict[str, Any]]:
-        """Main entry point -- scrape job listings from LinkedIn search."""
+        """Main entry point -- scrape job listings from LinkedIn search.
+
+        Uses the guest API endpoint for ALL pages (including the first).
+        The main /jobs/search page can redirect to auth walls or serve
+        different HTML layouts. The guest API at
+        /jobs-guest/jobs/api/seeMoreJobPostings/search?start=N
+        consistently returns public HTML job cards.
+        """
         params = self.config.build_search_params()
         count = 0
         max_results = self.config.max_results
 
-        # First page: use the main search URL to get total results count
-        search_url = f"{BASE_URL}/jobs/search"
         logger.info(f"Starting LinkedIn job search: {params}")
 
-        first_page_html = await fetch_html(
-            self.client, search_url, self.rate_limiter, params
-        )
-
-        if not first_page_html:
-            logger.error("Failed to fetch first search page")
-            return
-
-        # Parse total results count from first page
-        total_results = self._parse_total_results(first_page_html)
-        if total_results is not None:
-            logger.info(f"Total results available: {total_results}")
-        else:
-            logger.info("Could not determine total results count")
-
-        # Parse job cards from first page (25 results)
-        first_page_jobs = self._parse_search_cards(first_page_html)
-        logger.info(f"First page: found {len(first_page_jobs)} job cards")
-
-        for job in first_page_jobs:
-            if count >= max_results:
-                return
-
-            if self.config.fetch_job_details:
-                job = await self._enrich_with_details(job)
-
-            yield format_job_card(job)
-            count += 1
-
-        # Paginate using the guest API (10 results per page, start=25,35,45...)
-        # LinkedIn caps at start=990 (returns 400 at start=1000)
-        start = 25  # first page already gave us 0-24
+        # Use guest API for ALL pages, starting at start=0
+        # Guest API returns ~10 results per page
+        start = 0
+        consecutive_empty = 0
 
         while count < max_results:
             if start >= 1000:
                 logger.info("Reached LinkedIn pagination limit (start=1000)")
-                break
-
-            if total_results is not None and start >= total_results:
-                logger.info("Reached end of available results")
                 break
 
             page_params = dict(params)
@@ -88,14 +61,40 @@ class LinkedInJobsScraper:
             )
 
             if not page_html:
-                logger.info(f"No more results at start={start}")
+                logger.info(f"No response at start={start}")
                 break
+
+            # Debug: log what we got back
+            logger.info(
+                f"Page start={start}: response length={len(page_html)} chars"
+            )
+            if len(page_html) < 500:
+                logger.debug(f"Short response body: {page_html[:500]}")
+
+            # Check for auth wall or redirect indicators
+            if "authwall" in page_html.lower() or "sign in" in page_html[:2000].lower():
+                logger.warning(
+                    f"Possible auth wall detected at start={start}. "
+                    "LinkedIn may be blocking guest access."
+                )
 
             page_jobs = self._parse_search_cards(page_html)
-            if not page_jobs:
-                logger.info(f"No job cards found at start={start}")
-                break
 
+            if not page_jobs:
+                consecutive_empty += 1
+                logger.info(
+                    f"No job cards found at start={start} "
+                    f"(consecutive_empty={consecutive_empty})"
+                )
+                # Sometimes LinkedIn returns empty pages in the middle,
+                # try one more time before giving up
+                if consecutive_empty >= 2:
+                    logger.info("Two consecutive empty pages, stopping pagination")
+                    break
+                start += 25
+                continue
+
+            consecutive_empty = 0
             logger.info(f"Page start={start}: found {len(page_jobs)} job cards")
 
             for job in page_jobs:
@@ -108,7 +107,7 @@ class LinkedInJobsScraper:
                 yield format_job_card(job)
                 count += 1
 
-            start += 10  # guest API returns 10 per page
+            start += 25
 
     # --- HTML Parsing ---
 
