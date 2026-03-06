@@ -61,6 +61,12 @@ class LinkedInJobsScraper:
             )
 
             if not page_html:
+                if start == 0:
+                    # First request failed - this is a critical error
+                    raise RuntimeError(
+                        "Failed to fetch initial results from LinkedIn. "
+                        "The IP may be blocked. Try using RESIDENTIAL proxies."
+                    )
                 logger.info(f"No response at start={start}")
                 break
 
@@ -73,6 +79,12 @@ class LinkedInJobsScraper:
 
             # Check for auth wall or redirect indicators
             if "authwall" in page_html.lower() or "sign in" in page_html[:2000].lower():
+                if start == 0:
+                    # Auth wall on first request - critical error
+                    raise RuntimeError(
+                        "LinkedIn auth wall detected. Guest access is blocked. "
+                        "Try using RESIDENTIAL proxies from a different region."
+                    )
                 logger.warning(
                     f"Possible auth wall detected at start={start}. "
                     "LinkedIn may be blocking guest access."

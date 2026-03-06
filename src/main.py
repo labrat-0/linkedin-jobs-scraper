@@ -51,19 +51,27 @@ async def main() -> None:
         )
 
         # 3. Set up proxy
-        proxy_config = await Actor.create_proxy_configuration(
-            actor_proxy_input=raw_input.get("proxyConfiguration")
-        )
+        proxy_config = None
+        proxy_url = None
+        try:
+            proxy_config = await Actor.create_proxy_configuration(
+                actor_proxy_input=raw_input.get("proxyConfiguration")
+            )
+            if proxy_config:
+                proxy_url = await proxy_config.new_url()
+        except Exception as e:
+            Actor.log.warning(f"Failed to create proxy configuration: {e}")
+
+        if not proxy_url:
+            Actor.log.warning(
+                "No proxy configured. LinkedIn blocks most direct connections. "
+                "Consider enabling Apify Proxy with RESIDENTIAL group for reliable scraping."
+            )
 
         # 4. Resume state (survives migrations)
         state = await Actor.use_state(
             default_value={"scraped": 0, "failed": 0}
         )
-
-        # 5. Set up HTTP client with proxy
-        proxy_url = None
-        if proxy_config:
-            proxy_url = await proxy_config.new_url()
 
         await Actor.set_status_message("Connecting to LinkedIn...")
 
@@ -99,7 +107,28 @@ async def main() -> None:
 
             except Exception as e:
                 state["failed"] += 1
-                Actor.log.error(f"Scraping error: {e}")
+                error_msg = str(e).lower()
+                
+                # Provide specific guidance based on error type
+                if "403" in error_msg or "forbidden" in error_msg:
+                    Actor.log.error(
+                        f"LinkedIn blocked the request (403 Forbidden). "
+                        "This usually means the IP is blocked. "
+                        "Try using RESIDENTIAL proxies or wait before retrying."
+                    )
+                elif "429" in error_msg or "rate" in error_msg:
+                    Actor.log.error(
+                        f"LinkedIn rate limited the request (429). "
+                        "Too many requests. Wait a few minutes before retrying."
+                    )
+                elif "timeout" in error_msg:
+                    Actor.log.error(
+                        f"Request timed out. LinkedIn may be slow or blocking. "
+                        "Try again with RESIDENTIAL proxies."
+                    )
+                else:
+                    Actor.log.error(f"Scraping error: {e}")
+                
                 # Push whatever we have so far
                 if batch:
                     await Actor.push_data(batch)
