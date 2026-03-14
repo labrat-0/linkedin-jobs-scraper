@@ -26,3 +26,6 @@ storage/
 # OS
 .DS_Store
 Thumbs.db
+
+# GSD planning artifacts
+.planning/
