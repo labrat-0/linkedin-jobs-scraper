@@ -243,6 +243,24 @@ Without proxies, expect frequent 403 errors and low success rates. With resident
 
 ---
 
+## Timeout & memory guidance
+
+The actor enforces a 5-second delay between requests to avoid LinkedIn rate limiting. With `fetchJobDetails: true`, each job requires a search page request + a detail page request, so runtime scales with result count.
+
+| Max results | fetchJobDetails | Est. runtime | Recommended timeout |
+|---|---|---|---|
+| 25 (free tier) | true | ~4 min | 300s |
+| 50 | true | ~8 min | 600s |
+| 100 | true | ~15 min | 1000s |
+| 200 | true | ~30 min | 2000s |
+| 100 | false (search only) | ~1 min | 120s |
+
+**Memory:** 512MB is sufficient for all run sizes. 1-2GB is not needed unless you are running very large batch jobs (500+ results).
+
+To set timeout in Apify: go to your actor run settings → **Timeout** → set in seconds.
+
+---
+
 ## Limitations
 
 - LinkedIn caps search pagination at 1,000 results per query — use multiple searches or tighter filters to go deeper
