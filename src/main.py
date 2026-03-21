@@ -40,9 +40,13 @@ async def main() -> None:
             max_results = min(max_results, FREE_TIER_LIMIT)
             config.max_results = max_results
             config.max_results_per_search = min(config.max_results_per_search, FREE_TIER_LIMIT)
+            # Disable detail/company fetching for free users — halves request count,
+            # reduces block exposure, and keeps free runs fast and reliable.
+            config.fetch_job_details = False
+            config.fetch_company_details = False
             Actor.log.info(
-                f"Free tier: limited to {FREE_TIER_LIMIT} results. "
-                "Subscribe to the actor for unlimited results."
+                f"Free tier: limited to {FREE_TIER_LIMIT} results (listing data only). "
+                "Subscribe for full job details, skills, recruiter info, and company enrichment."
             )
 
         combos = config.get_search_combos()
@@ -66,10 +70,18 @@ async def main() -> None:
         except Exception as e:
             Actor.log.warning(f"Failed to create proxy configuration: {e}")
 
-        if not proxy_url:
+        if not proxy_url and os.environ.get("APIFY_IS_AT_HOME") == "1":
+            await Actor.fail(
+                status_message=(
+                    "Proxy required. LinkedIn blocks datacenter IPs on almost every run. "
+                    "Enable Apify Proxy with RESIDENTIAL group in Proxy Configuration and re-run."
+                )
+            )
+            return
+        elif not proxy_url:
             Actor.log.warning(
                 "No proxy configured. LinkedIn blocks most direct connections. "
-                "Consider enabling Apify Proxy with RESIDENTIAL group for reliable scraping."
+                "Continuing for local testing only."
             )
 
         # 4. Resume state (survives migrations)

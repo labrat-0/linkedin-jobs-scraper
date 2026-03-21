@@ -15,8 +15,10 @@ logger = logging.getLogger(__name__)
 REQUEST_INTERVAL = 5.0
 
 # Retry settings
-MAX_RETRIES = 3
-RETRY_BASE_DELAY = 15.0  # seconds
+# Kept low intentionally: 2 retries × (5+10)s = 15s max wait per URL.
+# Old values (3 retries × 15+30+60s = 105s) caused run timeouts on blocked IPs.
+MAX_RETRIES = 2
+RETRY_BASE_DELAY = 5.0  # seconds
 
 # User agents to rotate through (realistic browser UAs — updated 2026)
 USER_AGENTS = [
