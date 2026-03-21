@@ -237,9 +237,9 @@ Once connected, your AI agent can search LinkedIn jobs, extract skills, track hi
 
 ## Proxy guidance
 
-LinkedIn aggressively blocks datacenter IPs. **Residential proxies are strongly recommended.** The actor defaults to Apify's RESIDENTIAL proxy group.
+LinkedIn aggressively blocks datacenter IPs. **Residential proxies are required.** The actor defaults to Apify's RESIDENTIAL proxy group and will fail immediately on Apify if no proxy is configured — this saves you compute on a run that would never succeed anyway.
 
-Without proxies, expect frequent 403 errors and low success rates. With residential proxies, the actor reliably handles large batch runs.
+Without residential proxies, LinkedIn blocks the first request on almost every run. With residential proxies, the actor reliably handles large batch runs.
 
 ---
 
@@ -249,11 +249,13 @@ The actor enforces a 5-second delay between requests to avoid LinkedIn rate limi
 
 | Max results | fetchJobDetails | Est. runtime | Recommended timeout |
 |---|---|---|---|
-| 25 (free tier) | true | ~4 min | 300s |
+| 25 (free tier) | false (enforced) | ~3 min | 180s |
 | 50 | true | ~8 min | 600s |
 | 100 | true | ~15 min | 1000s |
 | 200 | true | ~30 min | 2000s |
 | 100 | false (search only) | ~1 min | 120s |
+
+> **Free tier note:** Free users (25 results max) always run with `fetchJobDetails: false` — listing data only (title, company, location, salary, URL, posted date). Subscribe for full job details, skills extraction, recruiter info, and company enrichment.
 
 **Memory:** 512MB is sufficient for all run sizes. 1-2GB is not needed unless you are running very large batch jobs (500+ results).
 
