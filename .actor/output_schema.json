@@ -6,6 +6,7 @@
         "results": {
             "type": "string",
             "title": "Results",
+            "description": "LinkedIn job listings with title, company, location, salary, skills, recruiter info, and company enrichment.",
             "template": "{{links.apiDefaultDatasetUrl}}/items"
         }
     }

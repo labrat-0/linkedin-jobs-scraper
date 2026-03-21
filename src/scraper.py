@@ -24,10 +24,12 @@ class LinkedInJobsScraper:
         client: httpx.AsyncClient,
         rate_limiter: RateLimiter,
         config: ScraperInput,
+        proxy_config=None,
     ) -> None:
         self.client = client
         self.rate_limiter = rate_limiter
         self.config = config
+        self.proxy_config = proxy_config
         self._company_cache: dict[str, dict[str, Any]] = {}
 
     async def scrape(self) -> AsyncIterator[dict[str, Any]]:
@@ -69,7 +71,8 @@ class LinkedInJobsScraper:
             page_params["start"] = str(start)
 
             page_html = await fetch_html(
-                self.client, GUEST_API_URL, self.rate_limiter, page_params, api_request=True
+                self.client, GUEST_API_URL, self.rate_limiter, page_params,
+                api_request=True, proxy_config=self.proxy_config,
             )
 
             if not page_html:
@@ -251,7 +254,8 @@ class LinkedInJobsScraper:
             return job
 
         detail_url = f"{BASE_URL}/jobs/view/{job_id}"
-        html = await fetch_html(self.client, detail_url, self.rate_limiter)
+        html = await fetch_html(self.client, detail_url, self.rate_limiter,
+                                proxy_config=self.proxy_config)
 
         if not html:
             logger.warning(f"Failed to fetch details for job {job_id}")
@@ -452,7 +456,8 @@ class LinkedInJobsScraper:
             return job
 
         about_url = company_url.rstrip("/") + "/about/"
-        html = await fetch_html(self.client, about_url, self.rate_limiter)
+        html = await fetch_html(self.client, about_url, self.rate_limiter,
+                                proxy_config=self.proxy_config)
 
         enrichment: dict[str, Any] = {}
 

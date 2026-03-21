@@ -97,20 +97,39 @@ async def fetch_html(
     rate_limiter: RateLimiter,
     params: dict[str, str] | None = None,
     api_request: bool = False,
+    proxy_config=None,
 ) -> str | None:
-    """Fetch HTML from a URL with rate limiting and retry logic.
+    """Fetch HTML from a URL with rate limiting, retry logic, and proxy rotation.
 
     Args:
         api_request: If True, use AJAX/XHR headers (for the guest API endpoint).
                      If False, use page navigation headers (for detail pages).
+        proxy_config: Apify ProxyConfiguration instance. When provided, a fresh
+                      proxy IP is requested from the pool on each 403/429 retry
+                      instead of hitting the same blocked IP again.
 
     Returns the HTML string, or None if all retries fail.
     """
     for attempt in range(MAX_RETRIES):
         await rate_limiter.wait()
 
+        # On retries after a block: get a fresh proxy IP from the pool.
+        # First attempt uses the shared client (existing IP). Subsequent
+        # attempts spin up a short-lived client with a new proxy URL so
+        # LinkedIn sees a different IP instead of the same blocked one.
+        active_client = client
+        temp_client: httpx.AsyncClient | None = None
+        if attempt > 0 and proxy_config is not None:
+            try:
+                new_proxy_url = await proxy_config.new_url()
+                temp_client = httpx.AsyncClient(proxy=new_proxy_url)
+                active_client = temp_client
+                logger.debug(f"Proxy rotated for retry {attempt + 1}/{MAX_RETRIES}")
+            except Exception as e:
+                logger.warning(f"Failed to rotate proxy: {e} — reusing existing client")
+
         try:
-            response = await client.get(
+            response = await active_client.get(
                 url,
                 params=params,
                 headers=get_api_headers() if api_request else get_headers(),
@@ -129,7 +148,7 @@ async def fetch_html(
                 delay = RETRY_BASE_DELAY * (2 ** attempt)
                 logger.warning(
                     f"Rate limited (429) on {url}. "
-                    f"Retrying in {delay}s (attempt {attempt + 1}/{MAX_RETRIES})"
+                    f"Rotating proxy and retrying in {delay}s (attempt {attempt + 1}/{MAX_RETRIES})"
                 )
                 await asyncio.sleep(delay)
                 continue
@@ -138,7 +157,7 @@ async def fetch_html(
                 delay = RETRY_BASE_DELAY * (2 ** attempt)
                 logger.warning(
                     f"Forbidden (403) on {url}. "
-                    f"IP may be blocked. Retrying in {delay}s (attempt {attempt + 1}/{MAX_RETRIES})"
+                    f"Rotating proxy and retrying in {delay}s (attempt {attempt + 1}/{MAX_RETRIES})"
                 )
                 await asyncio.sleep(delay)
                 continue
@@ -181,6 +200,10 @@ async def fetch_html(
             )
             await asyncio.sleep(delay)
             continue
+
+        finally:
+            if temp_client is not None:
+                await temp_client.aclose()
 
     logger.error(f"All {MAX_RETRIES} retries exhausted for {url}")
     return None

@@ -93,7 +93,7 @@ async def main() -> None:
 
         async with httpx.AsyncClient(proxy=proxy_url) as client:
             rate_limiter = RateLimiter()
-            scraper = LinkedInJobsScraper(client, rate_limiter, config)
+            scraper = LinkedInJobsScraper(client, rate_limiter, config, proxy_config=proxy_config)
 
             count = state["scraped"]
             batch: list[dict] = []

@@ -1,6 +1,146 @@
 {
     "actorSpecification": 1,
-    "fields": {},
+    "fields": {
+        "type": "object",
+        "properties": {
+            "jobId": {
+                "type": "string",
+                "description": "LinkedIn's unique job posting identifier.",
+                "example": "3812345678"
+            },
+            "title": {
+                "type": "string",
+                "description": "Job title as posted by the employer.",
+                "example": "Senior Data Engineer"
+            },
+            "company": {
+                "type": "string",
+                "description": "Company name.",
+                "example": "Stripe"
+            },
+            "companyUrl": {
+                "type": "string",
+                "description": "LinkedIn company page URL.",
+                "example": "https://www.linkedin.com/company/stripe"
+            },
+            "location": {
+                "type": "string",
+                "description": "Job location as displayed on LinkedIn.",
+                "example": "San Francisco, CA"
+            },
+            "postedDate": {
+                "type": "string",
+                "description": "Human-readable posted date (relative).",
+                "example": "2 days ago"
+            },
+            "postedDateTimestamp": {
+                "type": "string",
+                "description": "ISO 8601 date when the job was posted.",
+                "example": "2026-03-18"
+            },
+            "salary": {
+                "type": "string",
+                "description": "Salary range when LinkedIn displays it. Empty if not shown.",
+                "example": "USD 180,000 - 240,000 / YEAR"
+            },
+            "url": {
+                "type": "string",
+                "description": "Direct URL to the LinkedIn job posting.",
+                "example": "https://www.linkedin.com/jobs/view/3812345678"
+            },
+            "searchKeywords": {
+                "type": "string",
+                "description": "The keyword query that produced this result (batch mode tracking).",
+                "example": "data engineer"
+            },
+            "searchLocation": {
+                "type": "string",
+                "description": "The location query that produced this result (batch mode tracking).",
+                "example": "United States"
+            },
+            "description": {
+                "type": "string",
+                "description": "Full job description as plain text. Requires fetchJobDetails: true.",
+                "example": "We are looking for a Senior Data Engineer to join our platform team..."
+            },
+            "descriptionHtml": {
+                "type": "string",
+                "description": "Full job description as raw HTML. Requires fetchJobDetails: true.",
+                "example": "<div class=\"show-more-less-html__markup\">...</div>"
+            },
+            "skills": {
+                "type": "array",
+                "description": "Required skills extracted from the job detail page. Requires fetchJobDetails: true.",
+                "items": { "type": "string" },
+                "example": ["Python", "SQL", "Spark", "dbt", "AWS", "Airflow"]
+            },
+            "seniorityLevel": {
+                "type": "string",
+                "description": "Experience level required. Requires fetchJobDetails: true.",
+                "example": "Mid-Senior level"
+            },
+            "employmentType": {
+                "type": "string",
+                "description": "Employment type (Full-time, Part-time, Contract, etc.). Requires fetchJobDetails: true.",
+                "example": "Full-time"
+            },
+            "jobFunction": {
+                "type": "string",
+                "description": "LinkedIn job function category. Requires fetchJobDetails: true.",
+                "example": "Engineering and Information Technology"
+            },
+            "industries": {
+                "type": "string",
+                "description": "Industry classification. Requires fetchJobDetails: true.",
+                "example": "Financial Services"
+            },
+            "applicantCount": {
+                "type": "string",
+                "description": "Applicant count text as shown by LinkedIn. Requires fetchJobDetails: true.",
+                "example": "Over 200 applicants"
+            },
+            "recruiterName": {
+                "type": "string",
+                "description": "Name of the recruiter or hiring manager when LinkedIn displays it. Requires fetchJobDetails: true.",
+                "example": "Jane Smith"
+            },
+            "recruiterTitle": {
+                "type": "string",
+                "description": "Title of the recruiter or hiring manager. Requires fetchJobDetails: true.",
+                "example": "Senior Technical Recruiter"
+            },
+            "recruiterProfileUrl": {
+                "type": "string",
+                "description": "LinkedIn profile URL of the recruiter. Requires fetchJobDetails: true.",
+                "example": "https://www.linkedin.com/in/jane-smith"
+            },
+            "companyEmployeeCount": {
+                "type": "string",
+                "description": "Company employee count range from LinkedIn. Requires fetchJobDetails: true.",
+                "example": "1,001-5,000 employees"
+            },
+            "companyIndustry": {
+                "type": "string",
+                "description": "Company industry classification. Requires fetchJobDetails: true.",
+                "example": "Financial Services"
+            },
+            "companyLogoUrl": {
+                "type": "string",
+                "description": "URL of the company logo image. Requires fetchJobDetails: true.",
+                "example": "https://media.licdn.com/dms/image/C560BAQHaVYd13rRz3A/company-logo_200_200/0/..."
+            },
+            "companyWebsite": {
+                "type": "string",
+                "description": "Company external website URL. Requires fetchCompanyDetails: true.",
+                "example": "https://stripe.com"
+            },
+            "companyDescription": {
+                "type": "string",
+                "description": "Company description from their LinkedIn About page (up to 500 chars). Requires fetchCompanyDetails: true.",
+                "example": "Stripe is a financial infrastructure platform for businesses..."
+            }
+        }
+    },
     "views": {
         "overview": {
             "title": "Overview",
@@ -13,6 +153,8 @@
                     "postedDate",
                     "seniorityLevel",
                     "employmentType",
+                    "skills",
+                    "recruiterName",
                     "url"
                 ]
             },
@@ -26,6 +168,8 @@
                     "postedDate": { "label": "Posted", "format": "text" },
                     "seniorityLevel": { "label": "Seniority", "format": "text" },
                     "employmentType": { "label": "Type", "format": "text" },
+                    "skills": { "label": "Skills", "format": "text" },
+                    "recruiterName": { "label": "Recruiter", "format": "text" },
                     "url": { "label": "URL", "format": "link" }
                 }
             }

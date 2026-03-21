@@ -108,9 +108,9 @@
             "sectionDescription": "Control output depth, result limits, and enrichment options. More detail = more requests = higher cost and runtime.",
             "title": "📄 Fetch Full Job Details",
             "type": "boolean",
-            "description": "Loads each job's detail page to extract: full description + HTML, required skills, seniority, employment type, job function, industries, applicant count, recruiter/hiring manager info, and company size/industry. Strongly recommended for lead gen and agent use. Increases runtime and cost.",
-            "default": true,
-            "prefill": true
+            "description": "Loads each job's detail page to extract: full description + HTML, required skills, seniority, employment type, job function, industries, applicant count, recruiter/hiring manager info, and company size/industry. Doubles request count and runtime — enable when you need the extra fields.",
+            "default": false,
+            "prefill": false
         },
         "fetchCompanyDetails": {
             "title": "🏢 Fetch Company Details (Extended Enrichment)",

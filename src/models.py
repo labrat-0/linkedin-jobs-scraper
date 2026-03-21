@@ -32,7 +32,7 @@ class ScraperInput(BaseModel):
     company_filter: list[str] = []  # filter results by company name or LinkedIn slug
 
     # Scraper settings
-    fetch_job_details: bool = True
+    fetch_job_details: bool = False
     fetch_company_details: bool = False
     max_results: int = 100
     max_results_per_search: int = 100  # per keyword/location combo in batch mode
@@ -52,7 +52,7 @@ class ScraperInput(BaseModel):
             work_type=raw.get("workType", ""),
             salary=raw.get("salary", ""),
             company_filter=raw.get("companyFilter", []),
-            fetch_job_details=raw.get("fetchJobDetails", True),
+            fetch_job_details=raw.get("fetchJobDetails", False),
             fetch_company_details=raw.get("fetchCompanyDetails", False),
             max_results=raw.get("maxResults", 100),
             max_results_per_search=raw.get("maxResultsPerSearch", 100),
