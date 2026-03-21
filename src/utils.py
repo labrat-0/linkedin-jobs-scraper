@@ -18,15 +18,15 @@ REQUEST_INTERVAL = 5.0
 MAX_RETRIES = 3
 RETRY_BASE_DELAY = 15.0  # seconds
 
-# User agents to rotate through (realistic browser UAs)
+# User agents to rotate through (realistic browser UAs — updated 2026)
 USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:122.0) Gecko/20100101 Firefox/122.0",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:135.0) Gecko/20100101 Firefox/135.0",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 Edg/134.0.0.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15",
 ]
 
 BASE_URL = "https://www.linkedin.com"
@@ -54,18 +54,38 @@ class RateLimiter:
 
 
 def get_headers() -> dict[str, str]:
-    """Return headers with a random User-Agent for HTML requests."""
+    """Return headers for page navigation requests (job detail pages)."""
     return {
         "User-Agent": random.choice(USER_AGENTS),
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
         "Accept-Encoding": "gzip, deflate, br",
         "Connection": "keep-alive",
+        "Referer": "https://www.linkedin.com/jobs/search/",
         "Sec-Fetch-Dest": "document",
         "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "none",
-        "Sec-Fetch-User": "?1",
+        "Sec-Fetch-Site": "same-origin",
         "Upgrade-Insecure-Requests": "1",
+    }
+
+
+def get_api_headers() -> dict[str, str]:
+    """Return headers for AJAX calls to the guest API endpoint.
+
+    The guest API is fetched via JavaScript (XHR/fetch), not a page navigation,
+    so Sec-Fetch headers must reflect that. Using document/navigate headers here
+    is a bot signal LinkedIn detects.
+    """
+    return {
+        "User-Agent": random.choice(USER_AGENTS),
+        "Accept": "*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection": "keep-alive",
+        "Referer": "https://www.linkedin.com/jobs/search/",
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-origin",
     }
 
 
@@ -74,8 +94,13 @@ async def fetch_html(
     url: str,
     rate_limiter: RateLimiter,
     params: dict[str, str] | None = None,
+    api_request: bool = False,
 ) -> str | None:
     """Fetch HTML from a URL with rate limiting and retry logic.
+
+    Args:
+        api_request: If True, use AJAX/XHR headers (for the guest API endpoint).
+                     If False, use page navigation headers (for detail pages).
 
     Returns the HTML string, or None if all retries fail.
     """
@@ -86,7 +111,7 @@ async def fetch_html(
             response = await client.get(
                 url,
                 params=params,
-                headers=get_headers(),
+                headers=get_api_headers() if api_request else get_headers(),
                 timeout=30.0,
                 follow_redirects=True,
             )

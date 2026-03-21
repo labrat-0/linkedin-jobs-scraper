@@ -1,102 +1,148 @@
 {
-    "title": "LinkedIn Jobs Scraper Input",
-    "description": "Configure what to scrape from LinkedIn Jobs. Provide keywords, location, and optional filters.",
+    "title": "LinkedIn Jobs Scraper",
+    "description": "Scrape LinkedIn job listings at scale — no API key, no login, no browser required. Supports batch search across multiple keywords and locations, full job details, skills extraction, recruiter info, and company enrichment.",
     "type": "object",
     "schemaVersion": 1,
     "properties": {
         "keywords": {
-            "sectionCaption": "Search Parameters",
-            "sectionDescription": "Define what jobs to search for. At least keywords or location is required.",
-            "title": "Keywords",
+            "sectionCaption": "🔍 Search Parameters",
+            "sectionDescription": "Define your job search. Use single fields for a simple search, or use the list fields below for batch search across multiple keywords and locations in one run.",
+            "title": "🔍 Keywords",
             "type": "string",
-            "description": "Job search keywords (e.g. 'python developer', 'data engineer', 'product manager').",
+            "description": "Job search keywords (e.g. 'python developer', 'data engineer', 'sales manager'). For a single search. Use Keywords List below for batch mode.",
             "editor": "textfield",
             "prefill": "python developer"
         },
         "location": {
-            "title": "Location",
+            "title": "📍 Location",
             "type": "string",
-            "description": "Location to search for jobs (e.g. 'United States', 'San Francisco, CA', 'Remote').",
+            "description": "Location to search (e.g. 'United States', 'London, UK', 'Remote'). For a single search. Use Locations List below for batch mode.",
             "editor": "textfield",
             "prefill": "United States"
         },
+        "keywordsList": {
+            "title": "📋 Keywords List (Batch Mode)",
+            "type": "array",
+            "description": "Run multiple keyword searches in one go. Each keyword is combined with every location in Locations List — e.g. ['python developer', 'data engineer'] x ['New York', 'Remote'] = 4 searches. Overrides the single Keywords field when provided.",
+            "editor": "stringList",
+            "items": {
+                "type": "string"
+            },
+            "example": ["python developer", "data engineer", "ML engineer"]
+        },
+        "locationsList": {
+            "title": "🗺️ Locations List (Batch Mode)",
+            "type": "array",
+            "description": "List of locations to search across in batch mode. Combined with every entry in Keywords List. Overrides the single Location field when provided.",
+            "editor": "stringList",
+            "items": {
+                "type": "string"
+            },
+            "example": ["United States", "United Kingdom", "Remote"]
+        },
         "geoId": {
-            "title": "Geo ID (optional)",
+            "title": "🌐 Geo ID (optional)",
             "type": "string",
-            "description": "LinkedIn geographic ID for precise location filtering. Example: 103644278 for United States. Overrides text location if provided.",
+            "description": "LinkedIn geographic ID for precise location targeting (e.g. 103644278 for United States). Overrides text location when provided.",
             "editor": "textfield"
         },
+        "companyFilter": {
+            "title": "🏢 Company Filter",
+            "type": "array",
+            "description": "Only return jobs from specific companies. Enter company names or LinkedIn URL slugs (e.g. 'google', 'stripe', 'openai'). Leave empty to return jobs from all companies.",
+            "editor": "stringList",
+            "items": {
+                "type": "string"
+            },
+            "example": ["google", "meta", "stripe"]
+        },
         "datePosted": {
-            "sectionCaption": "Filters",
-            "sectionDescription": "Narrow results by date, job type, experience level, and work arrangement.",
-            "title": "Date posted",
+            "sectionCaption": "🎯 Filters",
+            "sectionDescription": "Narrow your results by date, job type, experience, work arrangement, and salary.",
+            "title": "📅 Date Posted",
             "type": "string",
-            "description": "Filter jobs by when they were posted.",
+            "description": "Filter jobs by how recently they were posted.",
             "editor": "select",
             "enum": ["", "past_24_hours", "past_week", "past_month"],
             "enumTitles": ["Any time", "Past 24 hours", "Past week", "Past month"],
             "default": ""
         },
         "jobType": {
-            "title": "Job type",
+            "title": "💼 Job Type",
             "type": "string",
-            "description": "Filter by job type.",
+            "description": "Filter by employment type.",
             "editor": "select",
             "enum": ["", "F", "P", "C", "T", "V", "I", "O"],
-            "enumTitles": ["Any", "Full-time", "Part-time", "Contract", "Temporary", "Volunteer", "Internship", "Other"],
+            "enumTitles": ["All types", "Full-time", "Part-time", "Contract", "Temporary", "Volunteer", "Internship", "Other"],
             "default": ""
         },
         "experienceLevel": {
-            "title": "Experience level",
+            "title": "🎓 Experience Level",
             "type": "string",
-            "description": "Filter by experience level.",
+            "description": "Filter by seniority level.",
             "editor": "select",
             "enum": ["", "1", "2", "3", "4", "5", "6"],
-            "enumTitles": ["Any", "Internship", "Entry level", "Associate", "Mid-Senior level", "Director", "Executive"],
+            "enumTitles": ["All levels", "Internship", "Entry level", "Associate", "Mid-Senior level", "Director", "Executive"],
             "default": ""
         },
         "workType": {
-            "title": "Work arrangement",
+            "title": "🏠 Work Arrangement",
             "type": "string",
             "description": "Filter by on-site, remote, or hybrid.",
             "editor": "select",
             "enum": ["", "1", "2", "3"],
-            "enumTitles": ["Any", "On-site", "Remote", "Hybrid"],
+            "enumTitles": ["All arrangements", "On-site", "Remote", "Hybrid"],
             "default": ""
         },
         "salary": {
-            "title": "Minimum salary",
+            "title": "💰 Minimum Salary (USD)",
             "type": "string",
-            "description": "Filter by minimum salary range (USD).",
+            "description": "Filter by minimum annual salary. Only applies to jobs where LinkedIn shows salary data.",
             "editor": "select",
             "enum": ["", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
-            "enumTitles": ["Any", "$40,000+", "$60,000+", "$80,000+", "$100,000+", "$120,000+", "$140,000+", "$160,000+", "$180,000+", "$200,000+"],
+            "enumTitles": ["Any salary", "$40,000+", "$60,000+", "$80,000+", "$100,000+", "$120,000+", "$140,000+", "$160,000+", "$180,000+", "$200,000+"],
             "default": ""
         },
         "fetchJobDetails": {
-            "sectionCaption": "Scraper Settings",
-            "sectionDescription": "Control output depth, limits, and proxy configuration.",
-            "title": "Fetch full job details",
+            "sectionCaption": "⚙️ Scraper Settings",
+            "sectionDescription": "Control output depth, result limits, and enrichment options. More detail = more requests = higher cost and runtime.",
+            "title": "📄 Fetch Full Job Details",
             "type": "boolean",
-            "description": "For each job, load the full detail page to extract description, salary, seniority level, employment type, job function, and industries. This is slower and uses more proxy traffic but gives much richer data.",
+            "description": "Loads each job's detail page to extract: full description + HTML, required skills, seniority, employment type, job function, industries, applicant count, recruiter/hiring manager info, and company size/industry. Strongly recommended for lead gen and agent use. Increases runtime and cost.",
             "default": true,
+            "prefill": true
+        },
+        "fetchCompanyDetails": {
+            "title": "🏢 Fetch Company Details (Extended Enrichment)",
+            "type": "boolean",
+            "description": "Makes an additional request to each company's LinkedIn page to extract: company website URL, company description, and extended company info. Great for lead generation pipelines. Results are cached per company within the run to minimize extra requests.",
+            "default": false,
             "prefill": false
         },
         "maxResults": {
-            "title": "Max results",
+            "title": "📊 Max Results",
             "type": "integer",
-            "description": "Maximum number of job listings to return. LinkedIn caps search results at 1,000 per query. Free users are limited to 25 per run.",
+            "description": "Maximum total job listings to return. LinkedIn caps search results at 1,000 per query. Free users are limited to 25 per run.",
             "default": 100,
             "prefill": 10,
             "minimum": 1,
             "maximum": 1000
         },
+        "maxResultsPerSearch": {
+            "title": "🔢 Max Results Per Search (Batch Mode)",
+            "type": "integer",
+            "description": "In batch mode (Keywords List x Locations List), this limits results per combination. Example: 3 keywords x 2 locations x 50 per search = up to 300 total results.",
+            "default": 100,
+            "prefill": 25,
+            "minimum": 1,
+            "maximum": 1000
+        },
         "proxyConfiguration": {
-            "sectionCaption": "Proxy Configuration",
-            "sectionDescription": "LinkedIn may block datacenter IPs. Residential proxies are recommended for reliability.",
-            "title": "Proxy configuration",
+            "sectionCaption": "🌐 Proxy Configuration",
+            "sectionDescription": "LinkedIn blocks many datacenter IPs. Residential proxies are strongly recommended for reliable results.",
+            "title": "🔒 Proxy Configuration",
             "type": "object",
-            "description": "Proxy settings. Residential proxies are recommended for reliable scraping.",
+            "description": "Proxy settings. Residential proxies give the best success rate. Without proxies, LinkedIn may block requests.",
             "editor": "proxy",
             "prefill": {
                 "useApifyProxy": true,

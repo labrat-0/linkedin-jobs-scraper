@@ -38,16 +38,20 @@ async def main() -> None:
         max_results = config.max_results
         if not is_paying and os.environ.get("APIFY_IS_AT_HOME") == "1":
             max_results = min(max_results, FREE_TIER_LIMIT)
-            config.max_results = max_results  # propagate limit to scraper
+            config.max_results = max_results
+            config.max_results_per_search = min(config.max_results_per_search, FREE_TIER_LIMIT)
             Actor.log.info(
                 f"Free tier: limited to {FREE_TIER_LIMIT} results. "
                 "Subscribe to the actor for unlimited results."
             )
 
+        combos = config.get_search_combos()
+        batch_mode = len(combos) > 1
         Actor.log.info(
             f"Starting LinkedIn Jobs Scraper | "
-            f"keywords='{config.keywords}' | location='{config.location}' | "
-            f"details={config.fetch_job_details} | max_results={max_results}"
+            f"searches={len(combos)} | batch_mode={batch_mode} | "
+            f"details={config.fetch_job_details} | company_enrichment={config.fetch_company_details} | "
+            f"max_results={max_results}"
         )
 
         # 3. Set up proxy
