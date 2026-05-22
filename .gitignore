@@ -27,7 +27,4 @@ storage/
 .DS_Store
 Thumbs.db
 
-# GSD planning artifacts
-.planning/
 
-# Arc documentation (internal use only)
