@@ -1,6 +1,6 @@
 {
     "title": "LinkedIn Jobs Scraper",
-    "description": "Scrape LinkedIn job listings at scale — no API key, no login, no browser required. Supports batch search across multiple keywords and locations, full job details, skills extraction, recruiter info, and company enrichment.",
+    "description": "Scrape LinkedIn job listings at scale — no API key, no login, no browser required. Supports batch search across multiple keywords and locations, plus full job details: description, seniority, employment type, job function, industry, applicant count, and salary when shown.",
     "type": "object",
     "schemaVersion": 1,
     "properties": {
@@ -108,14 +108,7 @@
             "sectionDescription": "Control output depth, result limits, and enrichment options. More detail = more requests = higher cost and runtime.",
             "title": "📄 Fetch Full Job Details",
             "type": "boolean",
-            "description": "Loads each job's detail page to extract: full description + HTML, required skills, seniority, employment type, job function, industries, applicant count, recruiter/hiring manager info, and company size/industry. Doubles request count and runtime — enable when you need the extra fields.",
-            "default": false,
-            "prefill": false
-        },
-        "fetchCompanyDetails": {
-            "title": "🏢 Fetch Company Details (Extended Enrichment)",
-            "type": "boolean",
-            "description": "Makes an additional request to each company's LinkedIn page to extract: company website URL, company description, and extended company info. Great for lead generation pipelines. Results are cached per company within the run to minimize extra requests.",
+            "description": "Loads each job's detail page to extract: full description (text + HTML), seniority level, employment type, job function, industry, applicant count, and salary when LinkedIn shows it. Adds one request per job — higher cost and runtime, so enable only when you need these fields.",
             "default": false,
             "prefill": false
         },

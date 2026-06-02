@@ -64,25 +64,25 @@ async def main() -> None:
             )
 
         # Did the user ask for enrichment that the free gate will strip? Tell them.
-        requested_enrichment = config.fetch_job_details or config.fetch_company_details
+        requested_enrichment = config.fetch_job_details
 
         max_results = config.max_results
         if not is_paying and os.environ.get("APIFY_IS_AT_HOME") == "1":
             max_results = min(max_results, FREE_TIER_LIMIT)
             config.max_results = max_results
             config.max_results_per_search = min(config.max_results_per_search, FREE_TIER_LIMIT)
-            # Disable detail/company fetching for free users — halves request count,
+            # Disable detail fetching for free users — halves request count,
             # reduces block exposure, and keeps free runs fast and reliable.
             config.fetch_job_details = False
-            config.fetch_company_details = False
             if requested_enrichment:
                 Actor.log.warning(
-                    "Fetch Full Job Details / Company Details were requested but are "
-                    "DISABLED on the free tier — returning listing data only."
+                    "Fetch Full Job Details was requested but is DISABLED on the "
+                    "free tier — returning listing data only."
                 )
             Actor.log.info(
                 f"Free tier: limited to {FREE_TIER_LIMIT} results (listing data only). "
-                "Subscribe for full job details, skills, recruiter info, and company enrichment."
+                "Subscribe for full job details: description, seniority, employment type, "
+                "job function, industry, and applicant count."
             )
 
         combos = config.get_search_combos()
@@ -90,7 +90,7 @@ async def main() -> None:
         Actor.log.info(
             f"Starting LinkedIn Jobs Scraper | "
             f"searches={len(combos)} | batch_mode={batch_mode} | "
-            f"details={config.fetch_job_details} | company_enrichment={config.fetch_company_details} | "
+            f"details={config.fetch_job_details} | "
             f"max_results={max_results}"
         )
 
@@ -135,11 +135,11 @@ async def main() -> None:
             batch: list[dict] = []
             batch_size = 25  # Push in batches for efficiency
 
-            # When enrichment is on, every result cost an extra detail/company
-            # page fetch (more proxy GB + compute). Charge the `enriched-result`
-            # event per item so the price reflects that cost. The `result`
-            # (dataset-item) event is auto-charged by push_data on top of this.
-            enriched = config.fetch_job_details or config.fetch_company_details
+            # When enrichment is on, every result cost an extra detail-page fetch
+            # (more proxy GB + compute). Charge the `enriched-result` event per item
+            # so the price reflects that cost. The `result` (dataset-item) event is
+            # auto-charged by push_data on top of this.
+            enriched = config.fetch_job_details
 
             async def push_batch(items: list[dict]) -> None:
                 if not items:

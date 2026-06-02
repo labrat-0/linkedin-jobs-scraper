@@ -43,10 +43,6 @@ class LinkedInJobsScraper:
         self.rate_limiter = rate_limiter
         self.config = config
         self.proxy_config = proxy_config
-        self._company_cache: dict[str, dict[str, Any]] = {}
-        # Per-company locks so concurrent jobs from the same company fetch the
-        # about page once, not N times (cache-miss race under asyncio.gather).
-        self._company_locks: dict[str, asyncio.Lock] = {}
         self.byte_budget = ByteBudget(
             _BUDGET_FLOOR_BYTES + config.max_results * _BUDGET_PER_RESULT_BYTES
         )
@@ -159,9 +155,9 @@ class LinkedInJobsScraper:
                 job["searchLocation"] = location
                 to_process.append(job)
 
-            # Enrich the whole page concurrently — detail/company pages fan out
-            # across the proxy pool instead of running one-at-a-time.
-            if self.config.fetch_job_details or self.config.fetch_company_details:
+            # Enrich the whole page concurrently — detail pages fan out across the
+            # proxy pool instead of running one-at-a-time.
+            if self.config.fetch_job_details:
                 to_process = list(
                     await asyncio.gather(*(self._enrich(j) for j in to_process))
                 )
@@ -178,8 +174,6 @@ class LinkedInJobsScraper:
         """Run the enabled enrichment passes for a single job."""
         if self.config.fetch_job_details:
             job = await self._enrich_with_details(job)
-        if self.config.fetch_company_details:
-            job = await self._enrich_with_company_page(job)
         return job
 
     # --- HTML Parsing ---
@@ -317,22 +311,23 @@ class LinkedInJobsScraper:
                     elif min_v:
                         job["salary"] = f"{currency} {int(min_v):,}+ / {unit}"
 
-            # Skills from structured data
-            skills_raw = json_ld.get("skills", "")
-            if skills_raw and isinstance(skills_raw, str):
-                job["skills"] = [s.strip() for s in skills_raw.split(",") if s.strip()]
-
         # 2. Description — both plain text and HTML
         desc_section = soup.find("div", class_=re.compile(r"show-more-less-html__markup"))
         if desc_section:
             job["description"] = desc_section.get_text(separator="\n", strip=True)
             job["descriptionHtml"] = str(desc_section)
 
-        # 3. Salary fallback from page HTML
+        # 3. Salary fallback from page HTML. Use a space separator so the label and
+        # value don't glue together, then strip the leading label.
         if not job.get("salary"):
             salary_el = soup.find("div", class_=re.compile(r"salary"))
             if salary_el:
-                job["salary"] = salary_el.get_text(strip=True)
+                salary_text = salary_el.get_text(" ", strip=True)
+                salary_text = re.sub(
+                    r"^(Base pay range|Base salary|Compensation|Salary|Pay range)\s*[:\-]?\s*",
+                    "", salary_text, flags=re.IGNORECASE,
+                )
+                job["salary"] = salary_text.strip()
 
         # 4. Job criteria list (seniority, type, function, industries)
         criteria_list = soup.find("ul", class_=re.compile(r"description__job-criteria-list"))
@@ -361,17 +356,7 @@ class LinkedInJobsScraper:
         if applicant_el:
             job["applicantCount"] = applicant_el.get_text(strip=True)
 
-        # 6. Skills from LinkedIn's skills section (if not from JSON-LD)
-        if not job.get("skills"):
-            skills = self._extract_skills(soup)
-            if skills:
-                job["skills"] = skills
-
-        # 7. Recruiter / hiring manager
-        recruiter = self._extract_recruiter(soup)
-        job.update(recruiter)
-
-        # 8. Company info embedded in the detail page (free — no extra request)
+        # 6. Company info embedded in the detail page (free — no extra request)
         company_info = self._extract_company_from_detail(soup)
         for key, val in company_info.items():
             if not job.get(key):
@@ -389,59 +374,6 @@ class LinkedInJobsScraper:
             except (json.JSONDecodeError, AttributeError):
                 continue
         return {}
-
-    def _extract_skills(self, soup: BeautifulSoup) -> list[str]:
-        """Extract required skills from LinkedIn's skills section."""
-        # LinkedIn skills list element
-        skills_list = soup.find(
-            "ul",
-            class_=re.compile(r"job-details-about-skills-pref__label-list|skills-section")
-        )
-        if skills_list:
-            return [
-                li.get_text(strip=True)
-                for li in skills_list.find_all("li")
-                if li.get_text(strip=True)
-            ]
-
-        # Fallback: comma/bullet delimited skills text
-        skills_el = soup.find(class_=re.compile(r"skills-pref|skill-match|skills-section"))
-        if skills_el:
-            text = skills_el.get_text(strip=True)
-            if text:
-                return [s.strip() for s in re.split(r"[,·•\n]", text) if s.strip()]
-
-        return []
-
-    def _extract_recruiter(self, soup: BeautifulSoup) -> dict[str, Any]:
-        """Extract hiring manager / recruiter info when LinkedIn shows it."""
-        result: dict[str, Any] = {}
-
-        hirer = (
-            soup.find(class_=re.compile(r"hirer-info"))
-            or soup.find(class_=re.compile(r"hiring-team"))
-            or soup.find(class_=re.compile(r"meet-the-team"))
-            or soup.find(attrs={"data-test": re.compile(r"hirer|hiring")})
-        )
-
-        if not hirer:
-            return result
-
-        name_el = hirer.find(class_=re.compile(r"name|hiring-member-name"))
-        if name_el:
-            result["recruiterName"] = name_el.get_text(strip=True)
-
-        title_el = hirer.find(class_=re.compile(r"occupation|subtitle|title"))
-        if title_el:
-            result["recruiterTitle"] = title_el.get_text(strip=True)
-
-        link_el = hirer.find("a", href=re.compile(r"/in/"))
-        if link_el:
-            href = link_el.get("href", "")
-            if isinstance(href, str):
-                result["recruiterProfileUrl"] = href.split("?")[0]
-
-        return result
 
     def _extract_company_from_detail(self, soup: BeautifulSoup) -> dict[str, Any]:
         """Extract company size and industry embedded in the job detail page.
@@ -472,86 +404,3 @@ class LinkedInJobsScraper:
                 result["companyLogoUrl"] = src
 
         return result
-
-    # --- Company Page Enrichment (optional, fetchCompanyDetails = true) ---
-
-    async def _enrich_with_company_page(self, job: dict[str, Any]) -> dict[str, Any]:
-        """Fetch the company LinkedIn page to extract website, description, and fuller details.
-
-        Results are cached per company URL to avoid duplicate requests when the
-        same company appears multiple times in a batch run.
-        """
-        company_url = job.get("companyUrl", "")
-        if not company_url:
-            return job
-
-        # Serialize per-company so concurrent jobs from the same company fetch the
-        # about page once. setdefault is atomic between awaits, so this is race-safe.
-        lock = self._company_locks.setdefault(company_url, asyncio.Lock())
-        async with lock:
-            # Return from cache if already fetched this session
-            if company_url in self._company_cache:
-                for key, val in self._company_cache[company_url].items():
-                    if not job.get(key):
-                        job[key] = val
-                return job
-
-            about_url = company_url.rstrip("/") + "/about/"
-            html = await fetch_html(self.client, about_url, self.rate_limiter,
-                                    proxy_config=self.proxy_config,
-                                    byte_budget=self.byte_budget)
-
-            enrichment = self._parse_company_about(html)
-
-            self._company_cache[company_url] = enrichment
-
-        for key, val in enrichment.items():
-            if not job.get(key):
-                job[key] = val
-
-        return job
-
-    def _parse_company_about(self, html: str | None) -> dict[str, Any]:
-        """Parse website, description, size and industry from a company about page."""
-        enrichment: dict[str, Any] = {}
-
-        if html:
-            soup = BeautifulSoup(html, "lxml")
-
-            # Company website (external URL)
-            for link in soup.find_all("a", href=True):
-                href = link.get("href", "")
-                if (
-                    isinstance(href, str)
-                    and href.startswith("http")
-                    and "linkedin.com" not in href
-                    and any(
-                        cls in str(link.get("class", ""))
-                        for cls in ["website", "url", "external"]
-                    )
-                ):
-                    enrichment["companyWebsite"] = href
-                    break
-
-            # Company description from about page
-            desc_el = (
-                soup.find(class_=re.compile(r"org-about-us-organization-description|about-us__description"))
-                or soup.find("p", class_=re.compile(r"description|about"))
-            )
-            if desc_el:
-                text = desc_el.get_text(strip=True)
-                if text:
-                    enrichment["companyDescription"] = text[:500]
-
-            # Extended company size / industry if not already set
-            overview_items = soup.find_all(
-                class_=re.compile(r"org-about-module|about-us__item|company-info")
-            )
-            for item in overview_items:
-                text = item.get_text(strip=True)
-                if "employee" in text.lower() and not enrichment.get("companyEmployeeCount"):
-                    enrichment["companyEmployeeCount"] = text
-                elif not enrichment.get("companyIndustry"):
-                    enrichment["companyIndustry"] = text
-
-        return enrichment

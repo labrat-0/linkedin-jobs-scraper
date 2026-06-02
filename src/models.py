@@ -33,7 +33,6 @@ class ScraperInput(BaseModel):
 
     # Scraper settings
     fetch_job_details: bool = False
-    fetch_company_details: bool = False
     max_results: int = 100
     max_results_per_search: int = 100  # per keyword/location combo in batch mode
 
@@ -53,7 +52,6 @@ class ScraperInput(BaseModel):
             salary=raw.get("salary", ""),
             company_filter=raw.get("companyFilter", []),
             fetch_job_details=raw.get("fetchJobDetails", False),
-            fetch_company_details=raw.get("fetchCompanyDetails", False),
             max_results=raw.get("maxResults", 100),
             max_results_per_search=raw.get("maxResultsPerSearch", 100),
         )
@@ -146,24 +144,14 @@ def format_job_card(data: dict[str, Any]) -> dict[str, Any]:
         # Full job details (when fetchJobDetails = true)
         "description": data.get("description", ""),
         "descriptionHtml": data.get("descriptionHtml", ""),
-        "skills": data.get("skills", []),
         "seniorityLevel": data.get("seniorityLevel", ""),
         "employmentType": data.get("employmentType", ""),
         "jobFunction": data.get("jobFunction", ""),
         "industries": data.get("industries", ""),
         "applicantCount": data.get("applicantCount", ""),
 
-        # Hiring manager / recruiter (when available on job page)
-        "recruiterName": data.get("recruiterName", ""),
-        "recruiterTitle": data.get("recruiterTitle", ""),
-        "recruiterProfileUrl": data.get("recruiterProfileUrl", ""),
-
-        # Company enrichment (from detail page — always when fetchJobDetails = true)
+        # Company enrichment (from detail page — when fetchJobDetails = true)
         "companyEmployeeCount": data.get("companyEmployeeCount", ""),
         "companyIndustry": data.get("companyIndustry", ""),
         "companyLogoUrl": data.get("companyLogoUrl", ""),
-
-        # Extended company enrichment (when fetchCompanyDetails = true)
-        "companyWebsite": data.get("companyWebsite", ""),
-        "companyDescription": data.get("companyDescription", ""),
     }

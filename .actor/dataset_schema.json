@@ -68,12 +68,6 @@
                 "description": "Full job description as raw HTML. Requires fetchJobDetails: true.",
                 "example": "<div class=\"show-more-less-html__markup\">...</div>"
             },
-            "skills": {
-                "type": "array",
-                "description": "Required skills extracted from the job detail page. Requires fetchJobDetails: true.",
-                "items": { "type": "string" },
-                "example": ["Python", "SQL", "Spark", "dbt", "AWS", "Airflow"]
-            },
             "seniorityLevel": {
                 "type": "string",
                 "description": "Experience level required. Requires fetchJobDetails: true.",
@@ -99,21 +93,6 @@
                 "description": "Applicant count text as shown by LinkedIn. Requires fetchJobDetails: true.",
                 "example": "Over 200 applicants"
             },
-            "recruiterName": {
-                "type": "string",
-                "description": "Name of the recruiter or hiring manager when LinkedIn displays it. Requires fetchJobDetails: true.",
-                "example": "Jane Smith"
-            },
-            "recruiterTitle": {
-                "type": "string",
-                "description": "Title of the recruiter or hiring manager. Requires fetchJobDetails: true.",
-                "example": "Senior Technical Recruiter"
-            },
-            "recruiterProfileUrl": {
-                "type": "string",
-                "description": "LinkedIn profile URL of the recruiter. Requires fetchJobDetails: true.",
-                "example": "https://www.linkedin.com/in/jane-smith"
-            },
             "companyEmployeeCount": {
                 "type": "string",
                 "description": "Company employee count range from LinkedIn. Requires fetchJobDetails: true.",
@@ -126,18 +105,8 @@
             },
             "companyLogoUrl": {
                 "type": "string",
-                "description": "URL of the company logo image. Requires fetchJobDetails: true.",
+                "description": "URL of the company logo image, when present on the job detail page. Requires fetchJobDetails: true.",
                 "example": "https://media.licdn.com/dms/image/C560BAQHaVYd13rRz3A/company-logo_200_200/0/..."
-            },
-            "companyWebsite": {
-                "type": "string",
-                "description": "Company external website URL. Requires fetchCompanyDetails: true.",
-                "example": "https://stripe.com"
-            },
-            "companyDescription": {
-                "type": "string",
-                "description": "Company description from their LinkedIn About page (up to 500 chars). Requires fetchCompanyDetails: true.",
-                "example": "Stripe is a financial infrastructure platform for businesses..."
             }
         }
     },
@@ -153,8 +122,7 @@
                     "postedDate",
                     "seniorityLevel",
                     "employmentType",
-                    "skills",
-                    "recruiterName",
+                    "jobFunction",
                     "url"
                 ]
             },
@@ -168,8 +136,7 @@
                     "postedDate": { "label": "Posted", "format": "text" },
                     "seniorityLevel": { "label": "Seniority", "format": "text" },
                     "employmentType": { "label": "Type", "format": "text" },
-                    "skills": { "label": "Skills", "format": "text" },
-                    "recruiterName": { "label": "Recruiter", "format": "text" },
+                    "jobFunction": { "label": "Function", "format": "text" },
                     "url": { "label": "URL", "format": "link" }
                 }
             }
