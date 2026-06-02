@@ -5,20 +5,56 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+from contextlib import asynccontextmanager
+from typing import AsyncIterator
 
 import httpx
 
 logger = logging.getLogger(__name__)
 
-# LinkedIn is stricter than Reddit. We use 5 seconds between requests
-# to stay under the radar with residential proxies.
-REQUEST_INTERVAL = 5.0
+# Politeness delay applied (with jitter) before each request. A fresh residential
+# IP is used per retry and concurrent requests fan out across the proxy pool, so a
+# short interval is safe — unlike a hard 5s global serial wait, which billed huge
+# amounts of idle compute (Apify bills memory × wall-time, sleeps included).
+REQUEST_INTERVAL = 1.5
+
+# Max in-flight requests at once. Bounds concurrency so enrichment (one detail page
+# per job) fans out instead of running serially, cutting wall-time ~3-5x on detail
+# runs while keeping load on LinkedIn reasonable.
+MAX_CONCURRENCY = 5
 
 # Retry settings
 # Kept low intentionally: 2 retries × (5+10)s = 15s max wait per URL.
 # Old values (3 retries × 15+30+60s = 105s) caused run timeouts on blocked IPs.
 MAX_RETRIES = 2
 RETRY_BASE_DELAY = 5.0  # seconds
+
+
+class BudgetExceededError(Exception):
+    """Raised when a run exceeds its proxy data budget — abort to cap cost."""
+
+
+class ByteBudget:
+    """Tracks cumulative downloaded bytes and aborts a run if it blows past a cap.
+
+    Residential proxy traffic (~$8/GB) is the dominant variable cost. With no
+    per-run price floor, a pathological run (block loop, huge pages, runaway
+    pagination) could download far more than its results are worth. This rail
+    aborts such runs in seconds instead of letting them bleed proxy spend.
+    """
+
+    def __init__(self, limit_bytes: int) -> None:
+        self.limit = limit_bytes
+        self.used = 0
+
+    def add(self, n: int) -> None:
+        self.used += n
+        if self.used > self.limit:
+            raise BudgetExceededError(
+                f"Proxy data budget exceeded ({self.used:,} > {self.limit:,} bytes). "
+                "Aborting to prevent runaway proxy cost. "
+                "Lower maxResults or disable enrichment and re-run."
+            )
 
 # User agents to rotate through (realistic browser UAs — updated 2026)
 USER_AGENTS = [
@@ -36,23 +72,37 @@ GUEST_API_URL = "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings
 
 
 class RateLimiter:
-    """Simple rate limiter that ensures a minimum interval between requests."""
+    """Concurrency gate with a jittered politeness delay.
 
-    def __init__(self, interval: float = REQUEST_INTERVAL) -> None:
+    Replaces the old serial 5s-between-requests lock. A semaphore bounds how many
+    requests are in flight at once (so enrichment can fan out), and each acquired
+    slot waits a short jittered interval to avoid synchronized bursts.
+    """
+
+    def __init__(
+        self,
+        interval: float = REQUEST_INTERVAL,
+        concurrency: int = MAX_CONCURRENCY,
+    ) -> None:
         self._interval = interval
-        self._last_request: float = 0.0
-        self._lock = asyncio.Lock()
+        self._semaphore = asyncio.Semaphore(concurrency)
+
+    async def _delay(self) -> None:
+        if self._interval > 0:
+            wait_time = random.uniform(self._interval * 0.5, self._interval * 1.5)
+            logger.debug(f"Rate limiter: waiting {wait_time:.1f}s")
+            await asyncio.sleep(wait_time)
+
+    @asynccontextmanager
+    async def slot(self) -> AsyncIterator[None]:
+        """Acquire a concurrency slot, applying the politeness delay before use."""
+        async with self._semaphore:
+            await self._delay()
+            yield
 
     async def wait(self) -> None:
-        """Wait until it's safe to make another request."""
-        async with self._lock:
-            now = asyncio.get_event_loop().time()
-            elapsed = now - self._last_request
-            if elapsed < self._interval:
-                wait_time = self._interval - elapsed
-                logger.debug(f"Rate limiter: waiting {wait_time:.1f}s")
-                await asyncio.sleep(wait_time)
-            self._last_request = asyncio.get_event_loop().time()
+        """Backward-compatible delay (no concurrency gate). Prefer slot()."""
+        await self._delay()
 
 
 def get_headers() -> dict[str, str]:
@@ -98,6 +148,7 @@ async def fetch_html(
     params: dict[str, str] | None = None,
     api_request: bool = False,
     proxy_config=None,
+    byte_budget: ByteBudget | None = None,
 ) -> str | None:
     """Fetch HTML from a URL with rate limiting, retry logic, and proxy rotation.
 
@@ -107,12 +158,15 @@ async def fetch_html(
         proxy_config: Apify ProxyConfiguration instance. When provided, a fresh
                       proxy IP is requested from the pool on each 403/429 retry
                       instead of hitting the same blocked IP again.
+        byte_budget: Optional ByteBudget. Downloaded bytes are counted against it;
+                     it raises BudgetExceededError once the run cap is hit.
 
     Returns the HTML string, or None if all retries fail.
+
+    Raises:
+        BudgetExceededError: if the cumulative proxy data budget is exceeded.
     """
     for attempt in range(MAX_RETRIES):
-        await rate_limiter.wait()
-
         # On retries after a block: get a fresh proxy IP from the pool.
         # First attempt uses the shared client (existing IP). Subsequent
         # attempts spin up a short-lived client with a new proxy URL so
@@ -129,13 +183,17 @@ async def fetch_html(
                 logger.warning(f"Failed to rotate proxy: {e} — reusing existing client")
 
         try:
-            response = await active_client.get(
-                url,
-                params=params,
-                headers=get_api_headers() if api_request else get_headers(),
-                timeout=30.0,
-                follow_redirects=True,
-            )
+            async with rate_limiter.slot():
+                response = await active_client.get(
+                    url,
+                    params=params,
+                    headers=get_api_headers() if api_request else get_headers(),
+                    timeout=30.0,
+                    follow_redirects=True,
+                )
+
+            if byte_budget is not None:
+                byte_budget.add(len(response.content))
 
             if response.status_code == 200:
                 logger.debug(

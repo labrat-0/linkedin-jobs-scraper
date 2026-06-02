@@ -10,7 +10,7 @@ from apify import Actor
 
 from .models import ScraperInput
 from .scraper import LinkedInJobsScraper
-from .utils import RateLimiter
+from .utils import BudgetExceededError, RateLimiter
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +120,20 @@ async def main() -> None:
                 # Push remaining items
                 if batch:
                     await Actor.push_data(batch)
+
+            except BudgetExceededError as e:
+                # Proxy data cap hit — keep whatever we already scraped and stop.
+                if batch:
+                    await Actor.push_data(batch)
+                Actor.log.warning(
+                    f"Run stopped early to cap proxy cost: {e} "
+                    f"Returned {count} jobs."
+                )
+                await Actor.set_status_message(
+                    f"Stopped at {count} jobs to cap proxy cost. "
+                    "Lower maxResults or disable enrichment for larger runs."
+                )
+                return
 
             except Exception as e:
                 state["failed"] += 1

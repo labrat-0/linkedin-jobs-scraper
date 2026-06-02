@@ -245,17 +245,19 @@ Without residential proxies, LinkedIn blocks the first request on almost every r
 
 ## Timeout & memory guidance
 
-The actor enforces a 5-second delay between requests to avoid LinkedIn rate limiting. With `fetchJobDetails: true`, each job requires a search page request + a detail page request, so runtime scales with result count.
+The actor applies a short, jittered politeness delay and fetches up to 5 requests concurrently to stay under LinkedIn's radar without wasting time. With `fetchJobDetails: true`, each job adds a detail page request, but those fan out concurrently per page, so runtime scales gently with result count.
 
 | Max results | fetchJobDetails | Est. runtime | Recommended timeout |
 |---|---|---|---|
-| 25 (free tier) | false (enforced) | ~3 min | 180s |
-| 50 | true | ~8 min | 600s |
-| 100 | true | ~15 min | 1000s |
-| 200 | true | ~30 min | 2000s |
-| 100 | false (search only) | ~1 min | 120s |
+| 25 (free tier) | false (enforced) | ~1 min | 120s |
+| 50 | true | ~2 min | 300s |
+| 100 | true | ~4 min | 600s |
+| 200 | true | ~7 min | 900s |
+| 100 | false (search only) | ~30 sec | 120s |
 
 > **Free tier note:** Free users (25 results max) always run with `fetchJobDetails: false` — listing data only (title, company, location, salary, URL, posted date). Subscribe for full job details, skills extraction, recruiter info, and company enrichment.
+
+> **Proxy data cap:** To protect against runaway proxy cost on blocked or pathological runs, the actor aborts early if a single run downloads far more data than its result count warrants (floor 25 MB + ~0.5 MB per requested result). It keeps and returns everything scraped up to that point. Lower `maxResults` or disable enrichment for very large runs.
 
 **Memory:** 512MB is sufficient for all run sizes. 1-2GB is not needed unless you are running very large batch jobs (500+ results).
 

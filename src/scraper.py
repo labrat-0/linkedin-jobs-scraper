@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -11,9 +12,15 @@ import httpx
 from bs4 import BeautifulSoup, Tag
 
 from .models import ScraperInput, format_job_card
-from .utils import BASE_URL, GUEST_API_URL, RateLimiter, fetch_html
+from .utils import BASE_URL, GUEST_API_URL, ByteBudget, RateLimiter, fetch_html
 
 logger = logging.getLogger(__name__)
+
+# Proxy data budget: floor 25 MB, plus ~0.5 MB per requested result. Generous
+# enough for legit enriched runs (detail page ≈ 150-250 KB) while still aborting
+# pathological block loops / runaway pagination before they bleed proxy spend.
+_BUDGET_FLOOR_BYTES = 25_000_000
+_BUDGET_PER_RESULT_BYTES = 500_000
 
 
 class LinkedInJobsScraper:
@@ -31,6 +38,12 @@ class LinkedInJobsScraper:
         self.config = config
         self.proxy_config = proxy_config
         self._company_cache: dict[str, dict[str, Any]] = {}
+        # Per-company locks so concurrent jobs from the same company fetch the
+        # about page once, not N times (cache-miss race under asyncio.gather).
+        self._company_locks: dict[str, asyncio.Lock] = {}
+        self.byte_budget = ByteBudget(
+            _BUDGET_FLOOR_BYTES + config.max_results * _BUDGET_PER_RESULT_BYTES
+        )
 
     async def scrape(self) -> AsyncIterator[dict[str, Any]]:
         """Main entry point — runs all keyword/location search combinations.
@@ -73,6 +86,7 @@ class LinkedInJobsScraper:
             page_html = await fetch_html(
                 self.client, GUEST_API_URL, self.rate_limiter, page_params,
                 api_request=True, proxy_config=self.proxy_config,
+                byte_budget=self.byte_budget,
             )
 
             if not page_html:
@@ -112,9 +126,12 @@ class LinkedInJobsScraper:
             consecutive_empty = 0
             logger.info(f"Page start={start}: found {len(page_jobs)} job cards")
 
+            # Select this page's jobs (dedup + company filter), capped at the
+            # remaining limit so we never enrich more than we'll yield.
+            to_process: list[dict[str, Any]] = []
             for job in page_jobs:
-                if count >= max_results:
-                    return
+                if count + len(to_process) >= max_results:
+                    break
 
                 job_id = job.get("jobId", "")
                 if not job_id or job_id in seen_ids:
@@ -134,17 +151,30 @@ class LinkedInJobsScraper:
                 # Track which search produced this result (useful in batch mode)
                 job["searchKeywords"] = keywords
                 job["searchLocation"] = location
+                to_process.append(job)
 
-                if self.config.fetch_job_details:
-                    job = await self._enrich_with_details(job)
+            # Enrich the whole page concurrently — detail/company pages fan out
+            # across the proxy pool instead of running one-at-a-time.
+            if self.config.fetch_job_details or self.config.fetch_company_details:
+                to_process = list(
+                    await asyncio.gather(*(self._enrich(j) for j in to_process))
+                )
 
-                if self.config.fetch_company_details:
-                    job = await self._enrich_with_company_page(job)
-
+            for job in to_process:
+                if count >= max_results:
+                    return
                 yield format_job_card(job)
                 count += 1
 
             start += 25
+
+    async def _enrich(self, job: dict[str, Any]) -> dict[str, Any]:
+        """Run the enabled enrichment passes for a single job."""
+        if self.config.fetch_job_details:
+            job = await self._enrich_with_details(job)
+        if self.config.fetch_company_details:
+            job = await self._enrich_with_company_page(job)
+        return job
 
     # --- HTML Parsing ---
 
@@ -255,7 +285,8 @@ class LinkedInJobsScraper:
 
         detail_url = f"{BASE_URL}/jobs/view/{job_id}"
         html = await fetch_html(self.client, detail_url, self.rate_limiter,
-                                proxy_config=self.proxy_config)
+                                proxy_config=self.proxy_config,
+                                byte_budget=self.byte_budget)
 
         if not html:
             logger.warning(f"Failed to fetch details for job {job_id}")
@@ -448,17 +479,34 @@ class LinkedInJobsScraper:
         if not company_url:
             return job
 
-        # Return from cache if already fetched this session
-        if company_url in self._company_cache:
-            for key, val in self._company_cache[company_url].items():
-                if not job.get(key):
-                    job[key] = val
-            return job
+        # Serialize per-company so concurrent jobs from the same company fetch the
+        # about page once. setdefault is atomic between awaits, so this is race-safe.
+        lock = self._company_locks.setdefault(company_url, asyncio.Lock())
+        async with lock:
+            # Return from cache if already fetched this session
+            if company_url in self._company_cache:
+                for key, val in self._company_cache[company_url].items():
+                    if not job.get(key):
+                        job[key] = val
+                return job
 
-        about_url = company_url.rstrip("/") + "/about/"
-        html = await fetch_html(self.client, about_url, self.rate_limiter,
-                                proxy_config=self.proxy_config)
+            about_url = company_url.rstrip("/") + "/about/"
+            html = await fetch_html(self.client, about_url, self.rate_limiter,
+                                    proxy_config=self.proxy_config,
+                                    byte_budget=self.byte_budget)
 
+            enrichment = self._parse_company_about(html)
+
+            self._company_cache[company_url] = enrichment
+
+        for key, val in enrichment.items():
+            if not job.get(key):
+                job[key] = val
+
+        return job
+
+    def _parse_company_about(self, html: str | None) -> dict[str, Any]:
+        """Parse website, description, size and industry from a company about page."""
         enrichment: dict[str, Any] = {}
 
         if html:
@@ -500,9 +548,4 @@ class LinkedInJobsScraper:
                 elif not enrichment.get("companyIndustry"):
                     enrichment["companyIndustry"] = text
 
-        self._company_cache[company_url] = enrichment
-        for key, val in enrichment.items():
-            if not job.get(key):
-                job[key] = val
-
-        return job
+        return enrichment
