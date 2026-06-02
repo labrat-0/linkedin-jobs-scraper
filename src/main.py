@@ -17,6 +17,12 @@ logger = logging.getLogger(__name__)
 # Free tier limit
 FREE_TIER_LIMIT = 25
 
+# Actor owner's Apify user id. Lets the owner run the full paying-user path on the
+# platform without a paid plan, for testing. Safe to keep in a public repo: a user
+# id is not a secret, and APIFY_USER_ID is set by the platform (not user-supplied),
+# so a renter cannot forge it to unlock paid features for free.
+OWNER_USER_ID = "wCP1WauwRX2Gr3Gir"
+
 
 async def main() -> None:
     """Main actor function."""
@@ -42,7 +48,10 @@ async def main() -> None:
         # it matches the user who started the run, so it is safe to leave enabled —
         # other users still get the normal free/paid gate.
         dev_paying_uid = os.environ.get("DEV_PAYING_USER_ID", "").strip()
-        owner_override = bool(dev_paying_uid) and user_id == dev_paying_uid
+        owner_override = (
+            (bool(OWNER_USER_ID) and user_id == OWNER_USER_ID)
+            or (bool(dev_paying_uid) and user_id == dev_paying_uid)
+        )
 
         is_paying = owner_override or (
             os.environ.get("APIFY_IS_AT_HOME") == "1"
