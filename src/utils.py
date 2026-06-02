@@ -69,6 +69,10 @@ USER_AGENTS = [
 
 BASE_URL = "https://www.linkedin.com"
 GUEST_API_URL = "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
+# Guest job-detail API. The full /jobs/view/{id} HTML page is authwalled and
+# returns 999 (LinkedIn block) for scraper traffic; this guest endpoint returns
+# the same detail fragment (description, criteria, salary) without login.
+GUEST_JOB_DETAIL_URL = "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting"
 
 
 class RateLimiter:
@@ -215,6 +219,18 @@ async def fetch_html(
                 delay = RETRY_BASE_DELAY * (2 ** attempt)
                 logger.warning(
                     f"Forbidden (403) on {url}. "
+                    f"Rotating proxy and retrying in {delay}s (attempt {attempt + 1}/{MAX_RETRIES})"
+                )
+                await asyncio.sleep(delay)
+                continue
+
+            if response.status_code == 999:
+                # LinkedIn's anti-bot block code. Rotate to a fresh proxy IP on the
+                # next attempt (handled at loop top); keep the delay short since long
+                # waits just burn billed time on a request that may never succeed.
+                delay = RETRY_BASE_DELAY * (2 ** attempt)
+                logger.warning(
+                    f"LinkedIn blocked the request (999) on {url}. "
                     f"Rotating proxy and retrying in {delay}s (attempt {attempt + 1}/{MAX_RETRIES})"
                 )
                 await asyncio.sleep(delay)

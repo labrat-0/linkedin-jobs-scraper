@@ -12,7 +12,13 @@ import httpx
 from bs4 import BeautifulSoup, Tag
 
 from .models import ScraperInput, format_job_card
-from .utils import BASE_URL, GUEST_API_URL, ByteBudget, RateLimiter, fetch_html
+from .utils import (
+    GUEST_API_URL,
+    GUEST_JOB_DETAIL_URL,
+    ByteBudget,
+    RateLimiter,
+    fetch_html,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -283,9 +289,9 @@ class LinkedInJobsScraper:
         if not job_id:
             return job
 
-        detail_url = f"{BASE_URL}/jobs/view/{job_id}"
+        detail_url = f"{GUEST_JOB_DETAIL_URL}/{job_id}"
         html = await fetch_html(self.client, detail_url, self.rate_limiter,
-                                proxy_config=self.proxy_config,
+                                api_request=True, proxy_config=self.proxy_config,
                                 byte_budget=self.byte_budget)
 
         if not html:
