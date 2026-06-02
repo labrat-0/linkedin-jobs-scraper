@@ -31,9 +31,31 @@ async def main() -> None:
             return
 
         # 2. Handle free user limits
-        is_paying = os.environ.get("APIFY_IS_AT_HOME") == "1" and os.environ.get(
-            "APIFY_USER_IS_PAYING"
-        ) == "1"
+        # Log who started the run so the owner can find their Apify user id (needed
+        # to set DEV_PAYING_USER_ID below).
+        user_id = os.environ.get("APIFY_USER_ID", "")
+        Actor.log.info(f"Run started by user: {user_id or 'unknown (local?)'}")
+
+        # Dev/testing override: lets the actor OWNER exercise the full paying-user
+        # path on the platform without a paid subscription. Set DEV_PAYING_USER_ID
+        # (actor env var) to your own Apify user id; the bypass activates only when
+        # it matches the user who started the run, so it is safe to leave enabled —
+        # other users still get the normal free/paid gate.
+        dev_paying_uid = os.environ.get("DEV_PAYING_USER_ID", "").strip()
+        owner_override = bool(dev_paying_uid) and user_id == dev_paying_uid
+
+        is_paying = owner_override or (
+            os.environ.get("APIFY_IS_AT_HOME") == "1"
+            and os.environ.get("APIFY_USER_IS_PAYING") == "1"
+        )
+        if owner_override:
+            Actor.log.info(
+                "DEV override: run owner matches DEV_PAYING_USER_ID — "
+                "full paying-user features enabled (testing only)."
+            )
+
+        # Did the user ask for enrichment that the free gate will strip? Tell them.
+        requested_enrichment = config.fetch_job_details or config.fetch_company_details
 
         max_results = config.max_results
         if not is_paying and os.environ.get("APIFY_IS_AT_HOME") == "1":
@@ -44,6 +66,11 @@ async def main() -> None:
             # reduces block exposure, and keeps free runs fast and reliable.
             config.fetch_job_details = False
             config.fetch_company_details = False
+            if requested_enrichment:
+                Actor.log.warning(
+                    "Fetch Full Job Details / Company Details were requested but are "
+                    "DISABLED on the free tier — returning listing data only."
+                )
             Actor.log.info(
                 f"Free tier: limited to {FREE_TIER_LIMIT} results (listing data only). "
                 "Subscribe for full job details, skills, recruiter info, and company enrichment."
