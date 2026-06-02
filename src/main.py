@@ -99,6 +99,19 @@ async def main() -> None:
             batch: list[dict] = []
             batch_size = 25  # Push in batches for efficiency
 
+            # When enrichment is on, every result cost an extra detail/company
+            # page fetch (more proxy GB + compute). Charge the `enriched-result`
+            # event per item so the price reflects that cost. The `result`
+            # (dataset-item) event is auto-charged by push_data on top of this.
+            enriched = config.fetch_job_details or config.fetch_company_details
+
+            async def push_batch(items: list[dict]) -> None:
+                if not items:
+                    return
+                await Actor.push_data(items)
+                if enriched:
+                    await Actor.charge(event_name="enriched-result", count=len(items))
+
             try:
                 async for item in scraper.scrape():
                     if count >= max_results:
@@ -110,7 +123,7 @@ async def main() -> None:
 
                     # Push in batches
                     if len(batch) >= batch_size:
-                        await Actor.push_data(batch)
+                        await push_batch(batch)
                         batch = []
 
                         await Actor.set_status_message(
@@ -118,13 +131,11 @@ async def main() -> None:
                         )
 
                 # Push remaining items
-                if batch:
-                    await Actor.push_data(batch)
+                await push_batch(batch)
 
             except BudgetExceededError as e:
                 # Proxy data cap hit — keep whatever we already scraped and stop.
-                if batch:
-                    await Actor.push_data(batch)
+                await push_batch(batch)
                 Actor.log.warning(
                     f"Run stopped early to cap proxy cost: {e} "
                     f"Returned {count} jobs."
@@ -160,8 +171,7 @@ async def main() -> None:
                     Actor.log.error(f"Scraping error: {e}")
                 
                 # Push whatever we have so far
-                if batch:
-                    await Actor.push_data(batch)
+                await push_batch(batch)
 
         # 6. Final status message
         msg = f"Done. Scraped {count} jobs."
