@@ -84,6 +84,16 @@ async def main() -> None:
                 "Subscribe for full job details: description, seniority, employment type, "
                 "job function, industry, and applicant count."
             )
+        elif not config.fetch_job_details:
+            # Paying/local run with detail fetch off. The detail-only fields
+            # (companyEmployeeCount, applicantCount, companyIndustry, description,
+            # seniority, employment type, job function) come back empty unless this
+            # is enabled — warn so it doesn't look like missing data.
+            Actor.log.warning(
+                "'Fetch Full Job Details' is OFF — companyIndustry, applicantCount, "
+                "companyEmployeeCount, description, seniority, employmentType and "
+                "jobFunction will be empty. Set \"fetchJobDetails\": true to populate them."
+            )
 
         combos = config.get_search_combos()
         batch_mode = len(combos) > 1
