@@ -250,7 +250,7 @@ async def fetch_html(
                 return None
 
             if response.status_code >= 500:
-                delay = 10.0 * (attempt + 1)
+                delay = RETRY_BASE_DELAY * (2 ** attempt)
                 logger.warning(
                     f"Server error ({response.status_code}) on {url}. "
                     f"Retrying in {delay}s (attempt {attempt + 1}/{MAX_RETRIES})"
@@ -262,7 +262,7 @@ async def fetch_html(
             return None
 
         except httpx.TimeoutException:
-            delay = 10.0 * (attempt + 1)
+            delay = RETRY_BASE_DELAY * (2 ** attempt)
             logger.warning(
                 f"Timeout on {url}. "
                 f"Retrying in {delay}s (attempt {attempt + 1}/{MAX_RETRIES})"
@@ -271,7 +271,7 @@ async def fetch_html(
             continue
 
         except httpx.HTTPError as e:
-            delay = 10.0 * (attempt + 1)
+            delay = RETRY_BASE_DELAY * (2 ** attempt)
             logger.warning(
                 f"HTTP error on {url}: {e}. "
                 f"Retrying in {delay}s (attempt {attempt + 1}/{MAX_RETRIES})"
