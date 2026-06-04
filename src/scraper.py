@@ -23,12 +23,11 @@ from .utils import (
 
 logger = logging.getLogger(__name__)
 
-# Margin guard for company-page enrichment. Company pages are ~350 KB residential
-# (~5x a job fragment), so a run full of distinct companies can out-cost its
-# enriched revenue. Cap company fetches at ~0.4 x requested results (break-even
-# vs the enriched-result charge) with an absolute ceiling. Cache hits are free
-# and never counted against this.
-_COMPANY_FETCH_FRACTION = 0.4
+# Anti-runaway ceiling for company-page enrichment. Each cache-miss fetch is
+# billed to the customer under the `company-detail` event (see main.py), so the
+# feature is self-funding and needs no per-run fraction cap. This hard ceiling
+# only guards against a pathological run with hundreds of distinct companies.
+# Cache hits are free and never counted against this.
 _COMPANY_FETCH_CEILING = 300
 
 # Proxy data budget: floor 25 MB, plus ~0.5 MB per requested result. Generous
@@ -58,10 +57,13 @@ class LinkedInJobsScraper:
         # Company-page enrichment state (only used when fetch_company_details).
         self._company_cache: dict[str, str] = {}  # slug -> employee count string
         self._company_fetches = 0
-        self._company_fetch_cap = int(
-            min(_COMPANY_FETCH_FRACTION * config.max_results, _COMPANY_FETCH_CEILING)
-        )
+        self._company_fetch_cap = _COMPANY_FETCH_CEILING
         self._company_cap_logged = False
+
+    @property
+    def company_fetches(self) -> int:
+        """Count of company-page network fetches (cache misses) this run, for billing."""
+        return self._company_fetches
 
     async def scrape(self) -> AsyncIterator[dict[str, Any]]:
         """Main entry point — runs all keyword/location search combinations.
@@ -439,8 +441,8 @@ class LinkedInJobsScraper:
         if self._company_fetches >= self._company_fetch_cap:
             if not self._company_cap_logged:
                 logger.info(
-                    f"Company-fetch cap reached ({self._company_fetch_cap}); "
-                    "remaining employee counts skipped this run."
+                    f"Company-fetch ceiling reached ({self._company_fetch_cap} distinct "
+                    "companies); remaining employee counts skipped this run."
                 )
                 self._company_cap_logged = True
             return job

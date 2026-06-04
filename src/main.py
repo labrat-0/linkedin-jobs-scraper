@@ -150,10 +150,13 @@ async def main() -> None:
             # (more proxy GB + compute). Charge the `enriched-result` event per item
             # so the price reflects that cost. The `result` (dataset-item) event is
             # auto-charged by push_data on top of this.
-            # Company enrichment adds extra company-page fetches on top of detail
-            # pages. Until a dedicated event can be added (Apify allows one price
-            # change per 30 days), bill it under the existing enriched-result event.
+            # Company-page enrichment adds extra ~350 KB residential fetches on top of
+            # detail pages. Each cache-miss fetch is billed under its own dedicated
+            # `company-detail` event (charge_company below), so it is self-funding —
+            # the customer pays only for companies actually fetched (cache hits free).
             enriched = config.fetch_job_details or config.fetch_company_details
+
+            charged_company_fetches = 0
 
             async def push_batch(items: list[dict]) -> None:
                 if not items:
@@ -161,6 +164,16 @@ async def main() -> None:
                 await Actor.push_data(items)
                 if enriched:
                     await Actor.charge(event_name="enriched-result", count=len(items))
+
+            async def charge_company() -> None:
+                # Bill the company-page fetches done since the last charge. Reconciled
+                # after every push and in `finally`, so partial/blocked/crashed runs
+                # still bill the fetches already incurred (mirrors enriched-result).
+                nonlocal charged_company_fetches
+                delta = scraper.company_fetches - charged_company_fetches
+                if delta > 0:
+                    await Actor.charge(event_name="company-detail", count=delta)
+                    charged_company_fetches = scraper.company_fetches
 
             try:
                 async for item in scraper.scrape():
@@ -219,9 +232,14 @@ async def main() -> None:
                     )
                 else:
                     Actor.log.error(f"Scraping error: {e}")
-                
+
                 # Push whatever we have so far
                 await push_batch(batch)
+
+            finally:
+                # Bill any company-page fetches not yet charged — runs on every exit
+                # path (normal, BudgetExceeded return, exception) so no fetch is free.
+                await charge_company()
 
         # 6. Final status message
         msg = f"Done. Scraped {count} jobs."
