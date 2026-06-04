@@ -13,6 +13,7 @@ from bs4 import BeautifulSoup, Tag
 
 from .models import ScraperInput, format_job_card
 from .utils import (
+    COMPANY_PAGE_URL,
     GUEST_API_URL,
     GUEST_JOB_DETAIL_URL,
     ByteBudget,
@@ -21,6 +22,14 @@ from .utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Margin guard for company-page enrichment. Company pages are ~350 KB residential
+# (~5x a job fragment), so a run full of distinct companies can out-cost its
+# enriched revenue. Cap company fetches at ~0.4 x requested results (break-even
+# vs the enriched-result charge) with an absolute ceiling. Cache hits are free
+# and never counted against this.
+_COMPANY_FETCH_FRACTION = 0.4
+_COMPANY_FETCH_CEILING = 300
 
 # Proxy data budget: floor 25 MB, plus ~0.5 MB per requested result. Generous
 # enough for legit enriched runs (detail page ≈ 150-250 KB) while still aborting
@@ -46,6 +55,13 @@ class LinkedInJobsScraper:
         self.byte_budget = ByteBudget(
             _BUDGET_FLOOR_BYTES + config.max_results * _BUDGET_PER_RESULT_BYTES
         )
+        # Company-page enrichment state (only used when fetch_company_details).
+        self._company_cache: dict[str, str] = {}  # slug -> employee count string
+        self._company_fetches = 0
+        self._company_fetch_cap = int(
+            min(_COMPANY_FETCH_FRACTION * config.max_results, _COMPANY_FETCH_CEILING)
+        )
+        self._company_cap_logged = False
 
     async def scrape(self) -> AsyncIterator[dict[str, Any]]:
         """Main entry point — runs all keyword/location search combinations.
@@ -157,7 +173,7 @@ class LinkedInJobsScraper:
 
             # Enrich the whole page concurrently — detail pages fan out across the
             # proxy pool instead of running one-at-a-time.
-            if self.config.fetch_job_details:
+            if self.config.fetch_job_details or self.config.fetch_company_details:
                 to_process = list(
                     await asyncio.gather(*(self._enrich(j) for j in to_process))
                 )
@@ -174,6 +190,8 @@ class LinkedInJobsScraper:
         """Run the enabled enrichment passes for a single job."""
         if self.config.fetch_job_details:
             job = await self._enrich_with_details(job)
+        if self.config.fetch_company_details:
+            job = await self._enrich_company(job)
         return job
 
     # --- HTML Parsing ---
@@ -348,6 +366,10 @@ class LinkedInJobsScraper:
                         job["jobFunction"] = value_text
                     elif "industr" in header_text:
                         job["industries"] = value_text
+                        # The guest fragment has no company-info panel, so the
+                        # criteria "Industries" value is also the best source for
+                        # the companyIndustry output field.
+                        job["companyIndustry"] = value_text
 
         # 5. Applicant count
         applicant_el = soup.find("figcaption", class_=re.compile(r"num-applicants"))
@@ -356,11 +378,14 @@ class LinkedInJobsScraper:
         if applicant_el:
             job["applicantCount"] = applicant_el.get_text(strip=True)
 
-        # 6. Company info embedded in the detail page (free — no extra request)
-        company_info = self._extract_company_from_detail(soup)
-        for key, val in company_info.items():
-            if not job.get(key):
-                job[key] = val
+        # Capture the resolved company slug from the detail fragment so company
+        # enrichment can reuse it (the fragment links the canonical /company/{slug}).
+        if not job.get("companyUrl"):
+            company_link = soup.find("a", href=re.compile(r"linkedin\.com/company/"))
+            if company_link:
+                href = company_link.get("href", "")
+                if isinstance(href, str):
+                    job["companyUrl"] = href
 
         return job
 
@@ -375,32 +400,64 @@ class LinkedInJobsScraper:
                 continue
         return {}
 
-    def _extract_company_from_detail(self, soup: BeautifulSoup) -> dict[str, Any]:
-        """Extract company size and industry embedded in the job detail page.
+    @staticmethod
+    def _company_slug(company_url: str) -> str:
+        """Extract the /company/{slug} slug from a LinkedIn company URL."""
+        m = re.search(r"/company/([^/?#]+)", company_url)
+        return m.group(1) if m else ""
 
-        LinkedIn includes a company info panel on detail pages — no extra
-        HTTP request needed.
+    @staticmethod
+    def _parse_employee_count(html: str) -> str:
+        """Pull the employee count from a company page.
+
+        Primary: the embedded `"numberOfEmployees":{"value":N}` JSON. Fallback:
+        a human "201-500 employees" / "1,000+ employees" range string.
         """
-        result: dict[str, Any] = {}
+        m = re.search(r'"numberOfEmployees":\s*\{\s*"value":\s*(\d+)', html)
+        if m:
+            n = int(m.group(1))
+            return f"{n:,} employee" if n == 1 else f"{n:,} employees"
+        m = re.search(r"(\d[\d,]*(?:-\d[\d,]*|\+)?)\s+employees", html)
+        if m:
+            return f"{m.group(1)} employees"
+        return ""
 
-        # Company info list items (employee count, industry)
-        info_items = soup.find_all(
-            class_=re.compile(r"jobs-company__list-item|company-list-item|org-top-card-summary-info-list__info-item")
+    async def _enrich_company(self, job: dict[str, Any]) -> dict[str, Any]:
+        """Fetch the company's public page and add companyEmployeeCount.
+
+        Cached per company slug so each unique company is fetched once. Cache
+        hits are free; only cache misses count against the per-run fetch cap.
+        """
+        slug = self._company_slug(job.get("companyUrl", ""))
+        if not slug:
+            return job
+
+        if slug in self._company_cache:
+            job["companyEmployeeCount"] = self._company_cache[slug]
+            return job
+
+        if self._company_fetches >= self._company_fetch_cap:
+            if not self._company_cap_logged:
+                logger.info(
+                    f"Company-fetch cap reached ({self._company_fetch_cap}); "
+                    "remaining employee counts skipped this run."
+                )
+                self._company_cap_logged = True
+            return job
+
+        self._company_fetches += 1
+        url = f"{COMPANY_PAGE_URL}/{slug}/"
+        html = await fetch_html(
+            self.client, url, self.rate_limiter,
+            api_request=False, proxy_config=self.proxy_config,
+            byte_budget=self.byte_budget,
         )
-        for item in info_items:
-            if not isinstance(item, Tag):
-                continue
-            text = item.get_text(strip=True)
-            if "employee" in text.lower():
-                result["companyEmployeeCount"] = text
-            elif not result.get("companyIndustry") and len(text) > 3:
-                result["companyIndustry"] = text
+        if not html:
+            logger.warning(f"Failed to fetch company page for '{slug}'")
+            return job
 
-        # Company logo from detail page
-        logo_el = soup.find("img", class_=re.compile(r"jobs-company__logo|company-logo|artdeco-entity-image"))
-        if logo_el:
-            src = logo_el.get("src", "")
-            if isinstance(src, str) and src.startswith("http"):
-                result["companyLogoUrl"] = src
-
-        return result
+        count = self._parse_employee_count(html)
+        self._company_cache[slug] = count  # cache even if empty to avoid refetch
+        if count:
+            job["companyEmployeeCount"] = count
+        return job

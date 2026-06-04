@@ -64,7 +64,7 @@ async def main() -> None:
             )
 
         # Did the user ask for enrichment that the free gate will strip? Tell them.
-        requested_enrichment = config.fetch_job_details
+        requested_enrichment = config.fetch_job_details or config.fetch_company_details
 
         max_results = config.max_results
         if not is_paying and os.environ.get("APIFY_IS_AT_HOME") == "1":
@@ -74,6 +74,7 @@ async def main() -> None:
             # Disable detail fetching for free users — halves request count,
             # reduces block exposure, and keeps free runs fast and reliable.
             config.fetch_job_details = False
+            config.fetch_company_details = False
             if requested_enrichment:
                 Actor.log.warning(
                     "Fetch Full Job Details was requested but is DISABLED on the "
@@ -149,7 +150,10 @@ async def main() -> None:
             # (more proxy GB + compute). Charge the `enriched-result` event per item
             # so the price reflects that cost. The `result` (dataset-item) event is
             # auto-charged by push_data on top of this.
-            enriched = config.fetch_job_details
+            # Company enrichment adds extra company-page fetches on top of detail
+            # pages. Until a dedicated event can be added (Apify allows one price
+            # change per 30 days), bill it under the existing enriched-result event.
+            enriched = config.fetch_job_details or config.fetch_company_details
 
             async def push_batch(items: list[dict]) -> None:
                 if not items:

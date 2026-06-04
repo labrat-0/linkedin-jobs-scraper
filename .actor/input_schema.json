@@ -112,6 +112,13 @@
             "default": false,
             "prefill": false
         },
+        "fetchCompanyDetails": {
+            "title": "🏢 Fetch Company Details (Employee Count)",
+            "type": "boolean",
+            "description": "Also opens each company's LinkedIn page to extract the registered employee count (companyEmployeeCount). Requires Fetch Full Job Details. Results are cached per company within the run to minimize extra requests. Note: company website and description are not available to guests and are not returned.",
+            "default": false,
+            "prefill": false
+        },
         "maxResults": {
             "title": "📊 Max Results",
             "type": "integer",

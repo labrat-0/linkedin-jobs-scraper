@@ -33,6 +33,10 @@ class ScraperInput(BaseModel):
 
     # Scraper settings
     fetch_job_details: bool = False
+    # Extra opt-in: fetch each company's public page for companyEmployeeCount.
+    # Adds one request per UNIQUE company (cached) — gated separately from
+    # fetch_job_details because company pages are large and proxy-costly.
+    fetch_company_details: bool = False
     max_results: int = 100
     max_results_per_search: int = 100  # per keyword/location combo in batch mode
 
@@ -52,6 +56,7 @@ class ScraperInput(BaseModel):
             salary=raw.get("salary", ""),
             company_filter=raw.get("companyFilter", []),
             fetch_job_details=raw.get("fetchJobDetails", False),
+            fetch_company_details=raw.get("fetchCompanyDetails", False),
             max_results=raw.get("maxResults", 100),
             max_results_per_search=raw.get("maxResultsPerSearch", 100),
         )
@@ -150,8 +155,9 @@ def format_job_card(data: dict[str, Any]) -> dict[str, Any]:
         "industries": data.get("industries", ""),
         "applicantCount": data.get("applicantCount", ""),
 
-        # Company enrichment (from detail page — when fetchJobDetails = true)
+        # Company enrichment
+        # companyIndustry: from job detail criteria (fetchJobDetails)
+        # companyEmployeeCount: from company page (fetchCompanyDetails)
         "companyEmployeeCount": data.get("companyEmployeeCount", ""),
         "companyIndustry": data.get("companyIndustry", ""),
-        "companyLogoUrl": data.get("companyLogoUrl", ""),
     }

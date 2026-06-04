@@ -73,6 +73,10 @@ GUEST_API_URL = "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings
 # returns 999 (LinkedIn block) for scraper traffic; this guest endpoint returns
 # the same detail fragment (description, criteria, salary) without login.
 GUEST_JOB_DETAIL_URL = "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting"
+# Public company page. Unlike the company /about/ panel (login-gated), the main
+# company page is server-rendered and embeds "numberOfEmployees":{"value":N} for
+# guest traffic when fetched with desktop headers (www host + Accept-Language).
+COMPANY_PAGE_URL = "https://www.linkedin.com/company"
 
 
 class RateLimiter:
