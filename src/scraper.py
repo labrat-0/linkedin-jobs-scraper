@@ -56,7 +56,7 @@ class LinkedInJobsScraper:
             _BUDGET_FLOOR_BYTES + config.max_results * _BUDGET_PER_RESULT_BYTES
         )
         # Company-page enrichment state (only used when fetch_company_details).
-        self._company_cache: dict[str, str] = {}  # slug -> employee count string
+        self._company_cache: dict[str, dict] = {}  # slug -> {count, leader_name, leader_title, leader_url}
         self._company_fetches = 0
         self._company_fetch_cap = int(
             min(_COMPANY_FETCH_FRACTION * config.max_results, _COMPANY_FETCH_CEILING)
@@ -155,6 +155,11 @@ class LinkedInJobsScraper:
                 if not job_id or job_id in seen_ids:
                     continue
                 seen_ids.add(job_id)
+
+                # Title-only filter — skip jobs where keyword only appears in description
+                if self.config.title_only and keywords:
+                    if keywords.lower() not in job.get("title", "").lower():
+                        continue
 
                 # Company filter — match against company name or LinkedIn slug
                 if self.config.company_filter:
@@ -407,6 +412,51 @@ class LinkedInJobsScraper:
         return m.group(1) if m else ""
 
     @staticmethod
+    def _parse_company_leader(html: str) -> tuple[str, str, str]:
+        """Return (name, title, profile_url) for first CEO/Founder/Co-Founder on page.
+
+        Tries JSON-LD <script> blobs first; falls back to scanning visible
+        /in/ profile links whose nearby title text matches leader keywords.
+        Returns ("", "", "") when nothing found.
+        """
+        LEADER_KEYWORDS = {"ceo", "founder", "co-founder", "cofounder"}
+
+        for blob in re.findall(
+            r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
+            html, re.S
+        ):
+            try:
+                data = json.loads(blob)
+                members = data.get("member") or data.get("founders") or []
+                if not isinstance(members, list):
+                    members = [members]
+                for m in members:
+                    if not isinstance(m, dict):
+                        continue
+                    role = m.get("roleName", "").lower()
+                    if any(kw in role for kw in LEADER_KEYWORDS):
+                        return (
+                            m.get("name", ""),
+                            m.get("roleName", ""),
+                            m.get("url", ""),
+                        )
+            except Exception:
+                pass
+
+        soup = BeautifulSoup(html, "lxml")
+        for link in soup.select("a[href*='/in/']"):
+            sibling = link.find_next(class_=re.compile(r"title|role|position", re.I))
+            if sibling:
+                role = sibling.get_text(strip=True).lower()
+                if any(kw in role for kw in LEADER_KEYWORDS):
+                    name_el = link.find(class_=re.compile(r"name", re.I))
+                    name = name_el.get_text(strip=True) if name_el else link.get_text(strip=True)
+                    href = link["href"].split("?")[0]
+                    return name, sibling.get_text(strip=True), href
+
+        return "", "", ""
+
+    @staticmethod
     def _parse_employee_count(html: str) -> str:
         """Pull the employee count from a company page.
 
@@ -423,7 +473,7 @@ class LinkedInJobsScraper:
         return ""
 
     async def _enrich_company(self, job: dict[str, Any]) -> dict[str, Any]:
-        """Fetch the company's public page and add companyEmployeeCount.
+        """Fetch the company's public page and add companyEmployeeCount + leader fields.
 
         Cached per company slug so each unique company is fetched once. Cache
         hits are free; only cache misses count against the per-run fetch cap.
@@ -433,7 +483,13 @@ class LinkedInJobsScraper:
             return job
 
         if slug in self._company_cache:
-            job["companyEmployeeCount"] = self._company_cache[slug]
+            cached = self._company_cache[slug]
+            if cached.get("count"):
+                job["companyEmployeeCount"] = cached["count"]
+            if cached.get("leader_name"):
+                job["companyLeaderName"] = cached["leader_name"]
+                job["companyLeaderTitle"] = cached["leader_title"]
+                job["companyLeaderUrl"] = cached["leader_url"]
             return job
 
         if self._company_fetches >= self._company_fetch_cap:
@@ -454,10 +510,21 @@ class LinkedInJobsScraper:
         )
         if not html:
             logger.warning(f"Failed to fetch company page for '{slug}'")
+            self._company_cache[slug] = {}
             return job
 
         count = self._parse_employee_count(html)
-        self._company_cache[slug] = count  # cache even if empty to avoid refetch
+        leader_name, leader_title, leader_url = self._parse_company_leader(html)
+        self._company_cache[slug] = {
+            "count": count,
+            "leader_name": leader_name,
+            "leader_title": leader_title,
+            "leader_url": leader_url,
+        }
         if count:
             job["companyEmployeeCount"] = count
+        if leader_name:
+            job["companyLeaderName"] = leader_name
+            job["companyLeaderTitle"] = leader_title
+            job["companyLeaderUrl"] = leader_url
         return job
