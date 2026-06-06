@@ -30,6 +30,7 @@ class ScraperInput(BaseModel):
     work_type: str = ""
     salary: str = ""
     company_filter: list[str] = []  # filter results by company name or LinkedIn slug
+    title_only: bool = False  # when True, keep only jobs where keyword appears in title
 
     # Scraper settings
     fetch_job_details: bool = False
@@ -55,6 +56,7 @@ class ScraperInput(BaseModel):
             work_type=raw.get("workType", ""),
             salary=raw.get("salary", ""),
             company_filter=raw.get("companyFilter", []),
+            title_only=raw.get("titleOnly", False),
             fetch_job_details=raw.get("fetchJobDetails", False),
             fetch_company_details=raw.get("fetchCompanyDetails", False),
             max_results=raw.get("maxResults", 100),
@@ -157,7 +159,10 @@ def format_job_card(data: dict[str, Any]) -> dict[str, Any]:
 
         # Company enrichment
         # companyIndustry: from job detail criteria (fetchJobDetails)
-        # companyEmployeeCount: from company page (fetchCompanyDetails)
+        # companyEmployeeCount/Leader*: from company page (fetchCompanyDetails)
         "companyEmployeeCount": data.get("companyEmployeeCount", ""),
         "companyIndustry": data.get("companyIndustry", ""),
+        "companyLeaderName": data.get("companyLeaderName", ""),
+        "companyLeaderTitle": data.get("companyLeaderTitle", ""),
+        "companyLeaderUrl": data.get("companyLeaderUrl", ""),
     }

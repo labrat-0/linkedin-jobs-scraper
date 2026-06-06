@@ -113,9 +113,16 @@
             "prefill": false
         },
         "fetchCompanyDetails": {
-            "title": "🏢 Fetch Company Details (Employee Count)",
+            "title": "🏢 Fetch Company Details (Employee Count + Founders)",
             "type": "boolean",
-            "description": "Also opens each company's LinkedIn page to extract the registered employee count (companyEmployeeCount). Requires Fetch Full Job Details. Results are cached per company within the run to minimize extra requests. Note: company website and description are not available to guests and are not returned.",
+            "description": "Also opens each company's LinkedIn page to extract the registered employee count (companyEmployeeCount) and the first CEO/Founder/Co-Founder found (companyLeaderName, companyLeaderTitle, companyLeaderUrl). Results are cached per company within the run to minimize extra requests.",
+            "default": false,
+            "prefill": false
+        },
+        "titleOnly": {
+            "title": "🔤 Match Keywords in Title Only",
+            "type": "boolean",
+            "description": "When enabled, only returns jobs where the search keyword appears in the job title. By default, LinkedIn searches the full posting (title + description + other fields), which can return jobs where your keyword only appears in the description. Enable this to get results strictly matching your keyword in the title.",
             "default": false,
             "prefill": false
         },

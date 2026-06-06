@@ -95,13 +95,28 @@
             },
             "companyEmployeeCount": {
                 "type": "string",
-                "description": "Company employee count range from LinkedIn. Requires fetchJobDetails: true.",
+                "description": "Company employee count from LinkedIn. Requires fetchCompanyDetails: true.",
                 "example": "1,001-5,000 employees"
             },
             "companyIndustry": {
                 "type": "string",
                 "description": "Company industry classification. Requires fetchJobDetails: true.",
                 "example": "Financial Services"
+            },
+            "companyLeaderName": {
+                "type": "string",
+                "description": "Full name of the first CEO, Founder, or Co-Founder found on the company page. Requires fetchCompanyDetails: true.",
+                "example": "Jane Smith"
+            },
+            "companyLeaderTitle": {
+                "type": "string",
+                "description": "Title of the company leader (e.g. CEO, Founder, Co-Founder). Requires fetchCompanyDetails: true.",
+                "example": "Co-Founder & CEO"
+            },
+            "companyLeaderUrl": {
+                "type": "string",
+                "description": "LinkedIn profile URL of the company leader. Requires fetchCompanyDetails: true.",
+                "example": "https://www.linkedin.com/in/janesmith"
             },
             "companyLogoUrl": {
                 "type": "string",
