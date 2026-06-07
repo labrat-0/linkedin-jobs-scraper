@@ -1,0 +1,28 @@
+{
+  "datePosted": "past_month",
+  "fetchCompanyDetails": true,
+  "fetchJobDetails": true,
+  "keywordsList": [
+    "product analyst",
+    "growth analyst",
+    "product analytics",
+    "growth analytics"
+  ],
+  "locationsList": [
+    "United States",
+    "Latin America",
+    "European Union",
+    "United Kingdom"
+  ],
+  "maxResults": 1000,
+  "maxResultsPerSearch": 1000,
+  "proxyConfiguration": {
+    "useApifyProxy": true,
+    "apifyProxyGroups": []
+  },
+  "titleOnly": true,
+  "workType": "2",
+  "jobType": "",
+  "experienceLevel": "",
+  "salary": ""
+}

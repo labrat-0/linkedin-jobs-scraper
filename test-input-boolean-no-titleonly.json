@@ -1,0 +1,29 @@
+{
+  "datePosted": "past_month",
+  "fetchCompanyDetails": true,
+  "fetchJobDetails": true,
+  "keywordsList": [
+    "\"product\" AND \"analyst\"",
+    "\"product\" AND \"analytics\"",
+    "\"growth\" AND \"analyst\"",
+    "\"growth\" AND \"analytics\"",
+    "\"product\" AND \"growth\""
+  ],
+  "locationsList": [
+    "United States",
+    "Latin America",
+    "European Union",
+    "United Kingdom"
+  ],
+  "maxResults": 1000,
+  "maxResultsPerSearch": 1000,
+  "proxyConfiguration": {
+    "useApifyProxy": true,
+    "apifyProxyGroups": []
+  },
+  "titleOnly": false,
+  "workType": "2",
+  "jobType": "",
+  "experienceLevel": "",
+  "salary": ""
+}
