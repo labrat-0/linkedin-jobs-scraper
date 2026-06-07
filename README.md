@@ -19,6 +19,12 @@ This actor scrapes job listings from LinkedIn's public job search pages and retu
 
 ## What's new
 
+### ⚡ Faster runs — parallel pagination
+Search pages are now fetched in concurrent batches instead of one at a time, cutting page-walk time **up to ~4x** on large or heavily-filtered searches. Same results, same order, same low cost — just faster. Smart early-stop still kicks in the moment a search is exhausted, so you never pay for pages you don't need.
+
+### 🎯 Title-only filtering
+Set `titleOnly: true` to keep only jobs whose **title** contains your keyword — perfect for precise role targeting (e.g. only actual "Product Analyst" titles, not every job that mentions "product" in the description). See the note in [Input reference](#input-reference) on using plain terms vs. Boolean syntax.
+
 ### Batch Search
 Run multiple keywords and locations in a single actor run. Use `keywordsList` and `locationsList` — the actor runs all combinations automatically and deduplicates results.
 
@@ -67,12 +73,15 @@ Use this actor as a live data source for AI agents:
 
 - **No API key, login, or cookies** — scrapes public pages only
 - **No browser / no Playwright** — pure HTTP, lower cost, faster execution
+- **Parallel pagination** — search pages fetched concurrently for up to ~4x faster runs
 - **Batch search** — multiple keywords × locations in one run
 - **Full job details** — description, seniority, employment type, job function, industry, applicant count
 - **Company info** — employee count, industry, logo when shown on the job page
+- **Title-only filter** — keep only jobs whose title matches your keyword
 - **Description HTML** — raw HTML alongside plain text
 - **Deduplication** — jobId-based dedup across all batch searches
 - **Company filter** — whitelist specific companies by name or slug
+- **Smart early-stop** — abandons a search the moment its result pool is exhausted, saving compute and proxy cost
 - **MCP-ready** — works as an AI agent tool via Apify's hosted MCP server
 - **Resume on migration** — Apify state survives actor migrations mid-run
 
@@ -125,15 +134,21 @@ Fields `description`, `descriptionHtml`, `seniorityLevel`, `employmentType`, `jo
 | `locationsList` | string[] | — | Batch locations (overrides `location`) |
 | `geoId` | string | — | LinkedIn geo ID for precise location |
 | `companyFilter` | string[] | — | Whitelist companies by name or slug |
+| `titleOnly` | boolean | `false` | Keep only jobs whose **title** contains the keyword (see note below) |
 | `datePosted` | select | any | `past_24_hours`, `past_week`, `past_month` |
 | `jobType` | select | any | Full-time, Part-time, Contract, etc. |
 | `experienceLevel` | select | any | Entry, Associate, Mid-Senior, Director, etc. |
 | `workType` | select | any | On-site, Remote, Hybrid |
 | `salary` | select | any | Minimum salary filter (USD) |
 | `fetchJobDetails` | boolean | `false` | Load full detail page per job (description, criteria, applicants) |
+| `fetchCompanyDetails` | boolean | `false` | Also fetch each company's public page for employee count (one request per unique company, cached) |
 | `maxResults` | integer | 100 | Total result cap across all searches |
 | `maxResultsPerSearch` | integer | 100 | Cap per keyword/location combo (batch mode) |
 | `proxyConfiguration` | object | RESIDENTIAL | Proxy settings — residential recommended |
+
+> **Using `titleOnly`?** Use **plain keywords** (e.g. `product analyst`, `growth analyst`), not Boolean strings. The title filter matches your text against the job title directly — it does **not** interpret LinkedIn Boolean operators like `AND`/`OR` or quotation marks. A keyword like `"product" AND "analyst"` with `titleOnly: true` will match nothing, because no job title literally contains that operator text. If you want Boolean search, set `titleOnly: false` and let LinkedIn's search engine handle the operators.
+
+> **Note on result counts with `titleOnly`:** because LinkedIn has no native title-scope filter, results are filtered on our side — a niche role can return far fewer than `maxResults`. That's expected: the run stops automatically once every matching title is found, rather than padding with description-only matches.
 
 ---
 
@@ -212,15 +227,15 @@ Without residential proxies, LinkedIn blocks the first request on almost every r
 
 ## Timeout & memory guidance
 
-The actor applies a short, jittered politeness delay and fetches up to 5 requests concurrently to stay under LinkedIn's radar without wasting time. With `fetchJobDetails: true`, each job adds a detail page request, but those fan out concurrently per page, so runtime scales gently with result count.
+The actor applies a short, jittered politeness delay and fetches up to 5 requests concurrently to stay under LinkedIn's radar without wasting time. Search pages are paginated in concurrent batches, and with `fetchJobDetails: true` each job's detail request fans out concurrently per page — so runtime scales gently with result count.
 
 | Max results | fetchJobDetails | Est. runtime | Recommended timeout |
 |---|---|---|---|
-| 25 (free tier) | false (enforced) | ~1 min | 120s |
-| 50 | true | ~2 min | 300s |
-| 100 | true | ~4 min | 600s |
-| 200 | true | ~7 min | 900s |
-| 100 | false (search only) | ~30 sec | 120s |
+| 25 (free tier) | false (enforced) | ~30 sec | 120s |
+| 50 | true | ~1 min | 300s |
+| 100 | true | ~2-3 min | 600s |
+| 200 | true | ~4-5 min | 900s |
+| 100 | false (search only) | ~15 sec | 120s |
 
 > **Free tier note:** Free users (25 results max) always run with `fetchJobDetails: false` — listing data only (title, company, location, salary, URL, posted date). Subscribe for full job details: description, seniority, employment type, job function, industry, and applicant count.
 
