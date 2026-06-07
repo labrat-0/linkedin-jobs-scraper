@@ -49,6 +49,15 @@ _FILTER_EMPTY_PAGE_LIMIT = 5
 # rotations) than mid-run pages, which can fail individually without killing the run.
 _FIRST_PAGE_RETRIES = 5
 
+# Pages fetched concurrently per batch during pagination. Network round-trips are
+# the dominant search-page cost (one page at a time + politeness delay), so fanning
+# out a window of fetches cuts wall-time ~Nx. Bounded on purpose: a fully
+# unproductive batch over-fetches at most _PAGE_WINDOW-1 pages past the early-stop
+# point. Set to _FILTER_EMPTY_PAGE_LIMIT so one empty batch == exactly the filter
+# stop threshold (no extra waste in the common titleOnly-exhaustion case), and to
+# MAX_CONCURRENCY so a window saturates the proxy gate without queueing.
+_PAGE_WINDOW = 5
+
 # Enrichment (job-detail + company) pages are OPTIONAL — a blocked/slow one must
 # not stall the run. Fail fast: 1 retry, no long backoff. A 999-blocked company
 # page otherwise burns ~18s (3 retries) for a field that will never load.
@@ -99,13 +108,79 @@ class LinkedInJobsScraper:
             async for job in self._scrape_single(keywords, location, seen_ids):
                 yield job
 
+    async def _fetch_search_page(
+        self, params: dict[str, str], start: int
+    ) -> str | None:
+        """Fetch one search-results page at the given pagination offset."""
+        page_params = dict(params)
+        page_params["start"] = str(start)
+        return await fetch_html(
+            self.client, GUEST_API_URL, self.rate_limiter, page_params,
+            api_request=True, proxy_config=self.proxy_config,
+            byte_budget=self.byte_budget,
+            max_retries=_FIRST_PAGE_RETRIES if start == 0 else None,
+        )
+
+    def _select_page_jobs(
+        self,
+        page_jobs: list[dict[str, Any]],
+        keywords: str,
+        location: str,
+        seen_ids: set[str],
+        remaining: int,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Dedup + filter a page's cards, capped at `remaining` slots.
+
+        Returns (jobs_to_enrich, new_unique_count). `new_unique` counts jobIds not
+        seen before across combos — used by the dup-exhaustion early-stop. Mutates
+        `seen_ids` so callers must invoke this sequentially in page order.
+        """
+        to_process: list[dict[str, Any]] = []
+        new_unique = 0
+        for job in page_jobs:
+            if len(to_process) >= remaining:
+                break
+
+            job_id = job.get("jobId", "")
+            if not job_id or job_id in seen_ids:
+                continue
+            seen_ids.add(job_id)
+            new_unique += 1
+
+            # Title-only filter — skip jobs where keyword only appears in description
+            if self.config.title_only and keywords:
+                if keywords.lower() not in job.get("title", "").lower():
+                    continue
+
+            # Company filter — match against company name or LinkedIn slug
+            if self.config.company_filter:
+                company = job.get("company", "").lower()
+                company_url = job.get("companyUrl", "").lower()
+                if not any(
+                    f.lower() in company or f.lower() in company_url
+                    for f in self.config.company_filter
+                ):
+                    continue
+
+            # Track which search produced this result (useful in batch mode)
+            job["searchKeywords"] = keywords
+            job["searchLocation"] = location
+            to_process.append(job)
+
+        return to_process, new_unique
+
     async def _scrape_single(
         self,
         keywords: str,
         location: str,
         seen_ids: set[str],
     ) -> AsyncIterator[dict[str, Any]]:
-        """Scrape one keyword/location search, paginating through results."""
+        """Scrape one keyword/location search, paginating through results.
+
+        Pages are fetched in concurrent windows (the network round-trip is the
+        dominant cost), but selected/yielded sequentially in page order so dedup,
+        the result cap, and the early-stop guards behave exactly as a serial walk.
+        """
         params = self.config.build_search_params(keywords, location)
         if self.config.title_only and keywords:
             logger.info(
@@ -120,134 +195,121 @@ class LinkedInJobsScraper:
         consecutive_empty = 0
         unproductive_pages = 0  # consecutive pages that kept zero jobs (filter/dup-exhausted)
         filters_active = self.config.title_only or bool(self.config.company_filter)
+        stop = False
 
-        while count < max_results:
+        while count < max_results and not stop:
             if start >= 1000:
                 logger.info("Reached LinkedIn pagination limit (start=1000)")
                 break
 
-            page_params = dict(params)
-            page_params["start"] = str(start)
-
-            page_html = await fetch_html(
-                self.client, GUEST_API_URL, self.rate_limiter, page_params,
-                api_request=True, proxy_config=self.proxy_config,
-                byte_budget=self.byte_budget,
-                max_retries=_FIRST_PAGE_RETRIES if start == 0 else None,
+            # Page 0 is the run's point of failure (auth wall / IP block); fetch it
+            # alone so a dead run aborts before fanning out parallel proxy requests.
+            # Subsequent batches fan out a bounded window of concurrent fetches.
+            window_size = 1 if start == 0 else _PAGE_WINDOW
+            window = [
+                start + i * 25
+                for i in range(window_size)
+                if start + i * 25 < 1000
+            ]
+            htmls = await asyncio.gather(
+                *(self._fetch_search_page(params, s) for s in window)
             )
 
-            if not page_html:
-                if start == 0:
-                    raise RuntimeError(
-                        "Failed to fetch initial results from LinkedIn. "
-                        "The IP may be blocked. Try using RESIDENTIAL proxies."
-                    )
-                logger.info(f"No response at start={start}")
-                break
-
-            logger.info(f"Page start={start}: response length={len(page_html)} chars")
-            if len(page_html) < 500:
-                logger.debug(f"Short response body: {page_html[:500]}")
-
-            if "authwall" in page_html.lower() or "sign in" in page_html[:2000].lower():
-                if start == 0:
-                    raise RuntimeError(
-                        "LinkedIn auth wall detected. Guest access is blocked. "
-                        "Try using RESIDENTIAL proxies from a different region."
-                    )
-                logger.warning(f"Possible auth wall at start={start}, continuing...")
-
-            page_jobs = self._parse_search_cards(page_html)
-
-            if not page_jobs:
-                consecutive_empty += 1
-                logger.info(
-                    f"No job cards at start={start} (consecutive_empty={consecutive_empty})"
-                )
-                if consecutive_empty >= 2:
-                    logger.info("Two consecutive empty pages, stopping pagination")
-                    break
-                start += 25
-                continue
-
-            consecutive_empty = 0
-            logger.info(f"Page start={start}: found {len(page_jobs)} job cards")
-
-            # Select this page's jobs (dedup + company filter), capped at the
-            # remaining limit so we never enrich more than we'll yield.
-            to_process: list[dict[str, Any]] = []
-            new_unique = 0  # jobIds on this page not seen before (across all combos)
-            for job in page_jobs:
-                if count + len(to_process) >= max_results:
-                    break
-
-                job_id = job.get("jobId", "")
-                if not job_id or job_id in seen_ids:
-                    continue
-                seen_ids.add(job_id)
-                new_unique += 1
-
-                # Title-only filter — skip jobs where keyword only appears in description
-                if self.config.title_only and keywords:
-                    if keywords.lower() not in job.get("title", "").lower():
-                        continue
-
-                # Company filter — match against company name or LinkedIn slug
-                if self.config.company_filter:
-                    company = job.get("company", "").lower()
-                    company_url = job.get("companyUrl", "").lower()
-                    if not any(
-                        f.lower() in company or f.lower() in company_url
-                        for f in self.config.company_filter
-                    ):
-                        continue
-
-                # Track which search produced this result (useful in batch mode)
-                job["searchKeywords"] = keywords
-                job["searchLocation"] = location
-                to_process.append(job)
-
-            # Enrich the whole page concurrently — detail pages fan out across the
-            # proxy pool instead of running one-at-a-time.
-            if self.config.fetch_job_details or self.config.fetch_company_details:
-                to_process = list(
-                    await asyncio.gather(*(self._enrich(j) for j in to_process))
-                )
-
-            kept_this_page = len(to_process)
-
-            for job in to_process:
-                if count >= max_results:
-                    return
-                yield format_job_card(job)
-                count += 1
-
-            # Early-stop: the result pool has stopped producing.
-            # 1) Zero new unique jobIds = LinkedIn is repeating cards we've already
-            #    seen → pool exhausted, stop regardless of filters.
-            if new_unique == 0:
-                logger.info(
-                    f"No new unique jobs at start={start} (all duplicates) — "
-                    "result pool exhausted, stopping."
-                )
-                break
-
-            # 2) With a filter active, give up after several consecutive pages that
-            #    matched nothing (matches deeper than this are rare).
-            if filters_active:
-                if kept_this_page == 0:
-                    unproductive_pages += 1
-                    if unproductive_pages >= _FILTER_EMPTY_PAGE_LIMIT:
-                        logger.info(
-                            f"No matching jobs in {_FILTER_EMPTY_PAGE_LIMIT} "
-                            f"consecutive pages — stopping (filter pool exhausted). "
-                            f"Kept {count} so far."
+            for page_start, page_html in zip(window, htmls):
+                if not page_html:
+                    if page_start == 0:
+                        raise RuntimeError(
+                            "Failed to fetch initial results from LinkedIn. "
+                            "The IP may be blocked. Try using RESIDENTIAL proxies."
                         )
-                        break
-                else:
-                    unproductive_pages = 0
+                    logger.info(f"No response at start={page_start}")
+                    stop = True
+                    break
 
-            start += 25
+                logger.info(
+                    f"Page start={page_start}: response length={len(page_html)} chars"
+                )
+                if len(page_html) < 500:
+                    logger.debug(f"Short response body: {page_html[:500]}")
+
+                if "authwall" in page_html.lower() or "sign in" in page_html[:2000].lower():
+                    if page_start == 0:
+                        raise RuntimeError(
+                            "LinkedIn auth wall detected. Guest access is blocked. "
+                            "Try using RESIDENTIAL proxies from a different region."
+                        )
+                    logger.warning(f"Possible auth wall at start={page_start}, continuing...")
+
+                page_jobs = self._parse_search_cards(page_html)
+
+                if not page_jobs:
+                    consecutive_empty += 1
+                    logger.info(
+                        f"No job cards at start={page_start} "
+                        f"(consecutive_empty={consecutive_empty})"
+                    )
+                    if consecutive_empty >= 2:
+                        logger.info("Two consecutive empty pages, stopping pagination")
+                        stop = True
+                        break
+                    continue
+
+                consecutive_empty = 0
+                logger.info(f"Page start={page_start}: found {len(page_jobs)} job cards")
+
+                # Select this page's jobs (dedup + filters), capped at the remaining
+                # limit so we never enrich more than we'll yield.
+                to_process, new_unique = self._select_page_jobs(
+                    page_jobs, keywords, location, seen_ids, max_results - count
+                )
+
+                # Enrich the whole page concurrently — detail pages fan out across
+                # the proxy pool instead of running one-at-a-time.
+                if self.config.fetch_job_details or self.config.fetch_company_details:
+                    to_process = list(
+                        await asyncio.gather(*(self._enrich(j) for j in to_process))
+                    )
+
+                kept_this_page = len(to_process)
+
+                for job in to_process:
+                    if count >= max_results:
+                        break
+                    yield format_job_card(job)
+                    count += 1
+
+                if count >= max_results:
+                    stop = True
+                    break
+
+                # Early-stop: the result pool has stopped producing.
+                # 1) Zero new unique jobIds = LinkedIn is repeating cards we've
+                #    already seen → pool exhausted, stop regardless of filters.
+                if new_unique == 0:
+                    logger.info(
+                        f"No new unique jobs at start={page_start} (all duplicates) — "
+                        "result pool exhausted, stopping."
+                    )
+                    stop = True
+                    break
+
+                # 2) With a filter active, give up after several consecutive pages
+                #    that matched nothing (matches deeper than this are rare).
+                if filters_active:
+                    if kept_this_page == 0:
+                        unproductive_pages += 1
+                        if unproductive_pages >= _FILTER_EMPTY_PAGE_LIMIT:
+                            logger.info(
+                                f"No matching jobs in {_FILTER_EMPTY_PAGE_LIMIT} "
+                                f"consecutive pages — stopping (filter pool exhausted). "
+                                f"Kept {count} so far."
+                            )
+                            stop = True
+                            break
+                    else:
+                        unproductive_pages = 0
+
+            start += len(window) * 25
 
     async def _enrich(self, job: dict[str, Any]) -> dict[str, Any]:
         """Run the enabled enrichment passes for a single job."""
