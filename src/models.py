@@ -159,10 +159,7 @@ def format_job_card(data: dict[str, Any]) -> dict[str, Any]:
 
         # Company enrichment
         # companyIndustry: from job detail criteria (fetchJobDetails)
-        # companyEmployeeCount/Leader*: from company page (fetchCompanyDetails)
+        # companyEmployeeCount: from company page (fetchCompanyDetails)
         "companyEmployeeCount": data.get("companyEmployeeCount", ""),
         "companyIndustry": data.get("companyIndustry", ""),
-        "companyLeaderName": data.get("companyLeaderName", ""),
-        "companyLeaderTitle": data.get("companyLeaderTitle", ""),
-        "companyLeaderUrl": data.get("companyLeaderUrl", ""),
     }

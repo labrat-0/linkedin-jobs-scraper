@@ -24,10 +24,13 @@ REQUEST_INTERVAL = 1.5
 MAX_CONCURRENCY = 5
 
 # Retry settings
-# Kept low intentionally: 2 retries × (5+10)s = 15s max wait per URL.
-# Old values (3 retries × 15+30+60s = 105s) caused run timeouts on blocked IPs.
-MAX_RETRIES = 2
-RETRY_BASE_DELAY = 5.0  # seconds
+# 3 retries = 2 fresh proxy rotations per blocked URL. Halved base delay keeps the
+# worst-case wait at 2.5+5+10 = 17.5s per URL (≈ old 2-retry 15s), short enough to
+# avoid run timeouts while giving blocked IPs two chances to rotate to a working
+# pool IP. The first search page (start=0) overrides this with a higher count — it
+# is the run's single point of failure (see FIRST_PAGE_RETRIES in scraper.py).
+MAX_RETRIES = 3
+RETRY_BASE_DELAY = 2.5  # seconds
 
 
 class BudgetExceededError(Exception):
@@ -157,6 +160,7 @@ async def fetch_html(
     api_request: bool = False,
     proxy_config=None,
     byte_budget: ByteBudget | None = None,
+    max_retries: int | None = None,
 ) -> str | None:
     """Fetch HTML from a URL with rate limiting, retry logic, and proxy rotation.
 
@@ -168,13 +172,17 @@ async def fetch_html(
                       instead of hitting the same blocked IP again.
         byte_budget: Optional ByteBudget. Downloaded bytes are counted against it;
                      it raises BudgetExceededError once the run cap is hit.
+        max_retries: Override the retry count for this call. Defaults to MAX_RETRIES.
+                     The first search page passes a higher value (it's the run's
+                     single point of failure).
 
     Returns the HTML string, or None if all retries fail.
 
     Raises:
         BudgetExceededError: if the cumulative proxy data budget is exceeded.
     """
-    for attempt in range(MAX_RETRIES):
+    retries = max_retries if max_retries is not None else MAX_RETRIES
+    for attempt in range(retries):
         # On retries after a block: get a fresh proxy IP from the pool.
         # First attempt uses the shared client (existing IP). Subsequent
         # attempts spin up a short-lived client with a new proxy URL so
@@ -186,7 +194,7 @@ async def fetch_html(
                 new_proxy_url = await proxy_config.new_url()
                 temp_client = httpx.AsyncClient(proxy=new_proxy_url)
                 active_client = temp_client
-                logger.debug(f"Proxy rotated for retry {attempt + 1}/{MAX_RETRIES}")
+                logger.debug(f"Proxy rotated for retry {attempt + 1}/{retries}")
             except Exception as e:
                 logger.warning(f"Failed to rotate proxy: {e} — reusing existing client")
 
@@ -214,7 +222,7 @@ async def fetch_html(
                 delay = RETRY_BASE_DELAY * (2 ** attempt)
                 logger.warning(
                     f"Rate limited (429) on {url}. "
-                    f"Rotating proxy and retrying in {delay}s (attempt {attempt + 1}/{MAX_RETRIES})"
+                    f"Rotating proxy and retrying in {delay}s (attempt {attempt + 1}/{retries})"
                 )
                 await asyncio.sleep(delay)
                 continue
@@ -223,7 +231,7 @@ async def fetch_html(
                 delay = RETRY_BASE_DELAY * (2 ** attempt)
                 logger.warning(
                     f"Forbidden (403) on {url}. "
-                    f"Rotating proxy and retrying in {delay}s (attempt {attempt + 1}/{MAX_RETRIES})"
+                    f"Rotating proxy and retrying in {delay}s (attempt {attempt + 1}/{retries})"
                 )
                 await asyncio.sleep(delay)
                 continue
@@ -235,7 +243,7 @@ async def fetch_html(
                 delay = RETRY_BASE_DELAY * (2 ** attempt)
                 logger.warning(
                     f"LinkedIn blocked the request (999) on {url}. "
-                    f"Rotating proxy and retrying in {delay}s (attempt {attempt + 1}/{MAX_RETRIES})"
+                    f"Rotating proxy and retrying in {delay}s (attempt {attempt + 1}/{retries})"
                 )
                 await asyncio.sleep(delay)
                 continue
@@ -253,7 +261,7 @@ async def fetch_html(
                 delay = RETRY_BASE_DELAY * (2 ** attempt)
                 logger.warning(
                     f"Server error ({response.status_code}) on {url}. "
-                    f"Retrying in {delay}s (attempt {attempt + 1}/{MAX_RETRIES})"
+                    f"Retrying in {delay}s (attempt {attempt + 1}/{retries})"
                 )
                 await asyncio.sleep(delay)
                 continue
@@ -265,7 +273,7 @@ async def fetch_html(
             delay = RETRY_BASE_DELAY * (2 ** attempt)
             logger.warning(
                 f"Timeout on {url}. "
-                f"Retrying in {delay}s (attempt {attempt + 1}/{MAX_RETRIES})"
+                f"Retrying in {delay}s (attempt {attempt + 1}/{retries})"
             )
             await asyncio.sleep(delay)
             continue
@@ -274,7 +282,7 @@ async def fetch_html(
             delay = RETRY_BASE_DELAY * (2 ** attempt)
             logger.warning(
                 f"HTTP error on {url}: {e}. "
-                f"Retrying in {delay}s (attempt {attempt + 1}/{MAX_RETRIES})"
+                f"Retrying in {delay}s (attempt {attempt + 1}/{retries})"
             )
             await asyncio.sleep(delay)
             continue
@@ -283,5 +291,5 @@ async def fetch_html(
             if temp_client is not None:
                 await temp_client.aclose()
 
-    logger.error(f"All {MAX_RETRIES} retries exhausted for {url}")
+    logger.error(f"All {retries} retries exhausted for {url}")
     return None
