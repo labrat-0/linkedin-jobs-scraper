@@ -49,6 +49,13 @@ _FILTER_EMPTY_PAGE_LIMIT = 5
 # rotations) than mid-run pages, which can fail individually without killing the run.
 _FIRST_PAGE_RETRIES = 5
 
+# Enrichment (job-detail + company) pages are OPTIONAL — a blocked/slow one must
+# not stall the run. Fail fast: 1 retry, no long backoff. A 999-blocked company
+# page otherwise burns ~18s (3 retries) for a field that will never load.
+_ENRICH_RETRIES = 1
+# Hung optional enrichment page should give up sooner than a search page (30s).
+_ENRICH_TIMEOUT = 15.0
+
 
 class LinkedInJobsScraper:
     """Scrapes LinkedIn Jobs using public HTML pages (no auth, no cookies, no API key)."""
@@ -360,7 +367,8 @@ class LinkedInJobsScraper:
         detail_url = f"{GUEST_JOB_DETAIL_URL}/{job_id}"
         html = await fetch_html(self.client, detail_url, self.rate_limiter,
                                 api_request=True, proxy_config=self.proxy_config,
-                                byte_budget=self.byte_budget)
+                                byte_budget=self.byte_budget,
+                                max_retries=_ENRICH_RETRIES, timeout=_ENRICH_TIMEOUT)
 
         if not html:
             logger.warning(f"Failed to fetch details for job {job_id}")
@@ -507,6 +515,7 @@ class LinkedInJobsScraper:
             self.client, url, self.rate_limiter,
             api_request=False, proxy_config=self.proxy_config,
             byte_budget=self.byte_budget,
+            max_retries=_ENRICH_RETRIES, timeout=_ENRICH_TIMEOUT,
         )
         if not html:
             logger.warning(f"Failed to fetch company page for '{slug}'")

@@ -161,6 +161,7 @@ async def fetch_html(
     proxy_config=None,
     byte_budget: ByteBudget | None = None,
     max_retries: int | None = None,
+    timeout: float = 30.0,
 ) -> str | None:
     """Fetch HTML from a URL with rate limiting, retry logic, and proxy rotation.
 
@@ -174,7 +175,9 @@ async def fetch_html(
                      it raises BudgetExceededError once the run cap is hit.
         max_retries: Override the retry count for this call. Defaults to MAX_RETRIES.
                      The first search page passes a higher value (it's the run's
-                     single point of failure).
+                     single point of failure); optional enrichment passes a lower one.
+        timeout: Per-request timeout in seconds. Defaults to 30s for search pages;
+                 enrichment passes a shorter value so a hung optional page fails fast.
 
     Returns the HTML string, or None if all retries fail.
 
@@ -204,7 +207,7 @@ async def fetch_html(
                     url,
                     params=params,
                     headers=get_api_headers() if api_request else get_headers(),
-                    timeout=30.0,
+                    timeout=timeout,
                     follow_redirects=True,
                 )
 
