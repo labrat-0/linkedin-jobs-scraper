@@ -37,6 +37,18 @@ _COMPANY_FETCH_CEILING = 300
 _BUDGET_FLOOR_BYTES = 25_000_000
 _BUDGET_PER_RESULT_BYTES = 500_000
 
+# Early-stop guard. When a filter (titleOnly / companyFilter) is active, a broad
+# query can return ~1000 listings while only a handful match — paginating the whole
+# pool burns proxy GB + wall-time for nothing. Stop after this many consecutive
+# pages that yield zero kept results (LinkedIn front-loads relevance, so matches
+# deeper than this are rare). 5 pages ≈ 125 listings scanned with no match.
+_FILTER_EMPTY_PAGE_LIMIT = 5
+
+# First search page (start=0) is the run's single point of failure: if it never
+# loads, the whole run aborts with 0 results. Give it more retries (more proxy
+# rotations) than mid-run pages, which can fail individually without killing the run.
+_FIRST_PAGE_RETRIES = 5
+
 
 class LinkedInJobsScraper:
     """Scrapes LinkedIn Jobs using public HTML pages (no auth, no cookies, no API key)."""
@@ -56,7 +68,7 @@ class LinkedInJobsScraper:
             _BUDGET_FLOOR_BYTES + config.max_results * _BUDGET_PER_RESULT_BYTES
         )
         # Company-page enrichment state (only used when fetch_company_details).
-        self._company_cache: dict[str, dict] = {}  # slug -> {count, leader_name, leader_title, leader_url}
+        self._company_cache: dict[str, str] = {}  # slug -> employee count string
         self._company_fetches = 0
         self._company_fetch_cap = int(
             min(_COMPANY_FETCH_FRACTION * config.max_results, _COMPANY_FETCH_CEILING)
@@ -88,10 +100,19 @@ class LinkedInJobsScraper:
     ) -> AsyncIterator[dict[str, Any]]:
         """Scrape one keyword/location search, paginating through results."""
         params = self.config.build_search_params(keywords, location)
+        if self.config.title_only and keywords:
+            logger.info(
+                f"titleOnly on: filtering '{keywords}' to title matches client-side. "
+                "Result count may fall well below maxResults — LinkedIn has no "
+                "title-scope filter, so all pages are scanned and only title-exact "
+                "matches are kept."
+            )
         count = 0
         max_results = self.config.max_results_per_search
         start = 0
         consecutive_empty = 0
+        unproductive_pages = 0  # consecutive pages that kept zero jobs (filter/dup-exhausted)
+        filters_active = self.config.title_only or bool(self.config.company_filter)
 
         while count < max_results:
             if start >= 1000:
@@ -105,6 +126,7 @@ class LinkedInJobsScraper:
                 self.client, GUEST_API_URL, self.rate_limiter, page_params,
                 api_request=True, proxy_config=self.proxy_config,
                 byte_budget=self.byte_budget,
+                max_retries=_FIRST_PAGE_RETRIES if start == 0 else None,
             )
 
             if not page_html:
@@ -147,6 +169,7 @@ class LinkedInJobsScraper:
             # Select this page's jobs (dedup + company filter), capped at the
             # remaining limit so we never enrich more than we'll yield.
             to_process: list[dict[str, Any]] = []
+            new_unique = 0  # jobIds on this page not seen before (across all combos)
             for job in page_jobs:
                 if count + len(to_process) >= max_results:
                     break
@@ -155,6 +178,7 @@ class LinkedInJobsScraper:
                 if not job_id or job_id in seen_ids:
                     continue
                 seen_ids.add(job_id)
+                new_unique += 1
 
                 # Title-only filter — skip jobs where keyword only appears in description
                 if self.config.title_only and keywords:
@@ -183,11 +207,38 @@ class LinkedInJobsScraper:
                     await asyncio.gather(*(self._enrich(j) for j in to_process))
                 )
 
+            kept_this_page = len(to_process)
+
             for job in to_process:
                 if count >= max_results:
                     return
                 yield format_job_card(job)
                 count += 1
+
+            # Early-stop: the result pool has stopped producing.
+            # 1) Zero new unique jobIds = LinkedIn is repeating cards we've already
+            #    seen → pool exhausted, stop regardless of filters.
+            if new_unique == 0:
+                logger.info(
+                    f"No new unique jobs at start={start} (all duplicates) — "
+                    "result pool exhausted, stopping."
+                )
+                break
+
+            # 2) With a filter active, give up after several consecutive pages that
+            #    matched nothing (matches deeper than this are rare).
+            if filters_active:
+                if kept_this_page == 0:
+                    unproductive_pages += 1
+                    if unproductive_pages >= _FILTER_EMPTY_PAGE_LIMIT:
+                        logger.info(
+                            f"No matching jobs in {_FILTER_EMPTY_PAGE_LIMIT} "
+                            f"consecutive pages — stopping (filter pool exhausted). "
+                            f"Kept {count} so far."
+                        )
+                        break
+                else:
+                    unproductive_pages = 0
 
             start += 25
 
@@ -412,51 +463,6 @@ class LinkedInJobsScraper:
         return m.group(1) if m else ""
 
     @staticmethod
-    def _parse_company_leader(html: str) -> tuple[str, str, str]:
-        """Return (name, title, profile_url) for first CEO/Founder/Co-Founder on page.
-
-        Tries JSON-LD <script> blobs first; falls back to scanning visible
-        /in/ profile links whose nearby title text matches leader keywords.
-        Returns ("", "", "") when nothing found.
-        """
-        LEADER_KEYWORDS = {"ceo", "founder", "co-founder", "cofounder"}
-
-        for blob in re.findall(
-            r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
-            html, re.S
-        ):
-            try:
-                data = json.loads(blob)
-                members = data.get("member") or data.get("founders") or []
-                if not isinstance(members, list):
-                    members = [members]
-                for m in members:
-                    if not isinstance(m, dict):
-                        continue
-                    role = m.get("roleName", "").lower()
-                    if any(kw in role for kw in LEADER_KEYWORDS):
-                        return (
-                            m.get("name", ""),
-                            m.get("roleName", ""),
-                            m.get("url", ""),
-                        )
-            except Exception:
-                pass
-
-        soup = BeautifulSoup(html, "lxml")
-        for link in soup.select("a[href*='/in/']"):
-            sibling = link.find_next(class_=re.compile(r"title|role|position", re.I))
-            if sibling:
-                role = sibling.get_text(strip=True).lower()
-                if any(kw in role for kw in LEADER_KEYWORDS):
-                    name_el = link.find(class_=re.compile(r"name", re.I))
-                    name = name_el.get_text(strip=True) if name_el else link.get_text(strip=True)
-                    href = link["href"].split("?")[0]
-                    return name, sibling.get_text(strip=True), href
-
-        return "", "", ""
-
-    @staticmethod
     def _parse_employee_count(html: str) -> str:
         """Pull the employee count from a company page.
 
@@ -473,7 +479,7 @@ class LinkedInJobsScraper:
         return ""
 
     async def _enrich_company(self, job: dict[str, Any]) -> dict[str, Any]:
-        """Fetch the company's public page and add companyEmployeeCount + leader fields.
+        """Fetch the company's public page and add companyEmployeeCount.
 
         Cached per company slug so each unique company is fetched once. Cache
         hits are free; only cache misses count against the per-run fetch cap.
@@ -483,13 +489,7 @@ class LinkedInJobsScraper:
             return job
 
         if slug in self._company_cache:
-            cached = self._company_cache[slug]
-            if cached.get("count"):
-                job["companyEmployeeCount"] = cached["count"]
-            if cached.get("leader_name"):
-                job["companyLeaderName"] = cached["leader_name"]
-                job["companyLeaderTitle"] = cached["leader_title"]
-                job["companyLeaderUrl"] = cached["leader_url"]
+            job["companyEmployeeCount"] = self._company_cache[slug]
             return job
 
         if self._company_fetches >= self._company_fetch_cap:
@@ -510,21 +510,11 @@ class LinkedInJobsScraper:
         )
         if not html:
             logger.warning(f"Failed to fetch company page for '{slug}'")
-            self._company_cache[slug] = {}
+            self._company_cache[slug] = ""
             return job
 
         count = self._parse_employee_count(html)
-        leader_name, leader_title, leader_url = self._parse_company_leader(html)
-        self._company_cache[slug] = {
-            "count": count,
-            "leader_name": leader_name,
-            "leader_title": leader_title,
-            "leader_url": leader_url,
-        }
+        self._company_cache[slug] = count  # cache even if empty to avoid refetch
         if count:
             job["companyEmployeeCount"] = count
-        if leader_name:
-            job["companyLeaderName"] = leader_name
-            job["companyLeaderTitle"] = leader_title
-            job["companyLeaderUrl"] = leader_url
         return job
