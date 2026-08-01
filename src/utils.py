@@ -32,6 +32,17 @@ MAX_CONCURRENCY = 5
 MAX_RETRIES = 3
 RETRY_BASE_DELAY = 2.5  # seconds
 
+# Statuses that mean "this exit IP can't have the page" rather than "this page is bad".
+# All are retryable via proxy rotation. 451 is LinkedIn refusing on geo/legal grounds
+# (GDPR-region exit IPs) — it is per-IP and transient, so it belongs here and not in
+# the terminal catch-all, where it used to burn the whole retry budget in one shot.
+ROTATE_AND_RETRY_STATUSES = {
+    429: "Rate limited",
+    403: "Forbidden",
+    451: "Blocked for legal/geo reasons",
+    999: "LinkedIn blocked the request",
+}
+
 
 class BudgetExceededError(Exception):
     """Raised when a run exceeds its proxy data budget — abort to cap cost."""
@@ -162,6 +173,7 @@ async def fetch_html(
     byte_budget: ByteBudget | None = None,
     max_retries: int | None = None,
     timeout: float = 30.0,
+    status_out: list[int] | None = None,
 ) -> str | None:
     """Fetch HTML from a URL with rate limiting, retry logic, and proxy rotation.
 
@@ -178,6 +190,9 @@ async def fetch_html(
                      single point of failure); optional enrichment passes a lower one.
         timeout: Per-request timeout in seconds. Defaults to 30s for search pages;
                  enrichment passes a shorter value so a hung optional page fails fast.
+        status_out: Optional list that each observed HTTP status is appended to, so a
+                    caller that gets None back can report *why* it failed instead of
+                    guessing. Left empty when every attempt failed before a response.
 
     Returns the HTML string, or None if all retries fail.
 
@@ -214,6 +229,9 @@ async def fetch_html(
             if byte_budget is not None:
                 byte_budget.add(len(response.content))
 
+            if status_out is not None:
+                status_out.append(response.status_code)
+
             if response.status_code == 200:
                 logger.debug(
                     f"OK 200 | url={url} | length={len(response.text)} | "
@@ -221,31 +239,16 @@ async def fetch_html(
                 )
                 return response.text
 
-            if response.status_code == 429:
+            if response.status_code in ROTATE_AND_RETRY_STATUSES:
+                # Every one of these is a property of the exit IP, not of the request:
+                # rate limit, anti-bot block, or a geo/legal refusal. Rotate to a fresh
+                # proxy IP on the next attempt (handled at loop top); keep the delay
+                # short since long waits just burn billed time on a request that may
+                # never succeed from this IP.
                 delay = RETRY_BASE_DELAY * (2 ** attempt)
                 logger.warning(
-                    f"Rate limited (429) on {url}. "
-                    f"Rotating proxy and retrying in {delay}s (attempt {attempt + 1}/{retries})"
-                )
-                await asyncio.sleep(delay)
-                continue
-
-            if response.status_code == 403:
-                delay = RETRY_BASE_DELAY * (2 ** attempt)
-                logger.warning(
-                    f"Forbidden (403) on {url}. "
-                    f"Rotating proxy and retrying in {delay}s (attempt {attempt + 1}/{retries})"
-                )
-                await asyncio.sleep(delay)
-                continue
-
-            if response.status_code == 999:
-                # LinkedIn's anti-bot block code. Rotate to a fresh proxy IP on the
-                # next attempt (handled at loop top); keep the delay short since long
-                # waits just burn billed time on a request that may never succeed.
-                delay = RETRY_BASE_DELAY * (2 ** attempt)
-                logger.warning(
-                    f"LinkedIn blocked the request (999) on {url}. "
+                    f"{ROTATE_AND_RETRY_STATUSES[response.status_code]} "
+                    f"({response.status_code}) on {url}. "
                     f"Rotating proxy and retrying in {delay}s (attempt {attempt + 1}/{retries})"
                 )
                 await asyncio.sleep(delay)

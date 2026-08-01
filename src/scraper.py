@@ -65,6 +65,24 @@ _ENRICH_RETRIES = 1
 # Hung optional enrichment page should give up sooner than a search page (30s).
 _ENRICH_TIMEOUT = 15.0
 
+# Human-readable form of the f_WT filter, mirroring input_schema's enumTitles.
+#
+# This is the ONLY available source for a job's workplace arrangement. Neither the
+# guest search card nor the guest job-detail fragment carries the tag anywhere in its
+# markup (the detail criteria list is Seniority / Employment type / Job function /
+# Industries only, and the fragment ships no JSON-LD). What we can say for certain is
+# which LinkedIn bucket a result came out of: f_WT=1/2/3 return disjoint result sets,
+# so a row returned under f_WT=2 is one LinkedIn itself classifies as Remote.
+#
+# It therefore reports LinkedIn's classification, NOT what the job description claims —
+# employers routinely tag hybrid roles as Remote, and LinkedIn does not validate them.
+# Empty when no workType filter was set, since the bucket is then unknown.
+_WORKPLACE_TYPE_LABELS = {
+    "1": "On-site (per LinkedIn)",
+    "2": "Remote (per LinkedIn)",
+    "3": "Hybrid (per LinkedIn)",
+}
+
 
 class LinkedInJobsScraper:
     """Scrapes LinkedIn Jobs using public HTML pages (no auth, no cookies, no API key)."""
@@ -90,6 +108,11 @@ class LinkedInJobsScraper:
             min(_COMPANY_FETCH_FRACTION * config.max_results, _COMPANY_FETCH_CEILING)
         )
         self._company_cap_logged = False
+        # Combos whose first page never loaded. A batch run keeps going past these
+        # (one bad exit IP must not discard the untried combos), so the count is
+        # carried out to the run's status message instead of raised.
+        self.failed_combos: list[str] = []
+        self.total_combos = 0
 
     async def scrape(self) -> AsyncIterator[dict[str, Any]]:
         """Main entry point — runs all keyword/location search combinations.
@@ -99,17 +122,28 @@ class LinkedInJobsScraper:
         """
         combos = self.config.get_search_combos()
         seen_ids: set[str] = set()
+        self.total_combos = len(combos)
 
         logger.info(f"Starting search: {len(combos)} combination(s)")
 
         for keywords, location in combos:
             label = f"keywords='{keywords}' location='{location}'"
             logger.info(f"Searching: {label}")
-            async for job in self._scrape_single(keywords, location, seen_ids):
+            async for job in self._scrape_single(keywords, location, seen_ids, label):
                 yield job
 
+        # Only a run where *every* combo failed to reach LinkedIn is a failed run.
+        # A partial failure is reported through failed_combos and still keeps results.
+        if combos and len(self.failed_combos) == len(combos):
+            raise RuntimeError(
+                f"Failed to fetch initial results from LinkedIn for all "
+                f"{len(combos)} search combination(s). See the per-combo warnings "
+                "above for the blocking status codes."
+            )
+
     async def _fetch_search_page(
-        self, params: dict[str, str], start: int
+        self, params: dict[str, str], start: int,
+        status_out: list[int] | None = None,
     ) -> str | None:
         """Fetch one search-results page at the given pagination offset."""
         page_params = dict(params)
@@ -119,6 +153,7 @@ class LinkedInJobsScraper:
             api_request=True, proxy_config=self.proxy_config,
             byte_budget=self.byte_budget,
             max_retries=_FIRST_PAGE_RETRIES if start == 0 else None,
+            status_out=status_out,
         )
 
     def _select_page_jobs(
@@ -165,15 +200,39 @@ class LinkedInJobsScraper:
             # Track which search produced this result (useful in batch mode)
             job["searchKeywords"] = keywords
             job["searchLocation"] = location
+            job["workplaceType"] = _WORKPLACE_TYPE_LABELS.get(self.config.work_type, "")
             to_process.append(job)
 
         return to_process, new_unique
+
+    def _abandon_combo(
+        self, label: str, statuses: list[int], auth_wall: bool = False
+    ) -> None:
+        """Record that a combo's first page never loaded, and say why.
+
+        Names the status LinkedIn actually returned rather than guessing at a cause —
+        the old message advised switching to RESIDENTIAL proxies even when the run was
+        already on them, which sent users chasing a setting that was not the problem.
+        """
+        self.failed_combos.append(label)
+        if auth_wall:
+            reason = "LinkedIn served an auth wall (guest access blocked from this IP)"
+        elif statuses:
+            seen = ", ".join(str(s) for s in statuses)
+            reason = f"LinkedIn returned {seen} on every attempt"
+        else:
+            reason = "no response (timeout or transport error on every attempt)"
+        logger.warning(
+            f"Skipping {label or 'search'}: first page never loaded — {reason}. "
+            "Continuing with the remaining search combinations."
+        )
 
     async def _scrape_single(
         self,
         keywords: str,
         location: str,
         seen_ids: set[str],
+        label: str = "",
     ) -> AsyncIterator[dict[str, Any]]:
         """Scrape one keyword/location search, paginating through results.
 
@@ -211,17 +270,22 @@ class LinkedInJobsScraper:
                 for i in range(window_size)
                 if start + i * 25 < 1000
             ]
+            first_page_statuses: list[int] = []
             htmls = await asyncio.gather(
-                *(self._fetch_search_page(params, s) for s in window)
+                *(
+                    self._fetch_search_page(
+                        params, s,
+                        status_out=first_page_statuses if s == 0 else None,
+                    )
+                    for s in window
+                )
             )
 
             for page_start, page_html in zip(window, htmls):
                 if not page_html:
                     if page_start == 0:
-                        raise RuntimeError(
-                            "Failed to fetch initial results from LinkedIn. "
-                            "The IP may be blocked. Try using RESIDENTIAL proxies."
-                        )
+                        self._abandon_combo(label, first_page_statuses)
+                        return
                     logger.info(f"No response at start={page_start}")
                     stop = True
                     break
@@ -234,10 +298,8 @@ class LinkedInJobsScraper:
 
                 if "authwall" in page_html.lower() or "sign in" in page_html[:2000].lower():
                     if page_start == 0:
-                        raise RuntimeError(
-                            "LinkedIn auth wall detected. Guest access is blocked. "
-                            "Try using RESIDENTIAL proxies from a different region."
-                        )
+                        self._abandon_combo(label, first_page_statuses, auth_wall=True)
+                        return
                     logger.warning(f"Possible auth wall at start={page_start}, continuing...")
 
                 page_jobs = self._parse_search_cards(page_html)

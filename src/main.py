@@ -223,10 +223,36 @@ async def main() -> None:
                 # Push whatever we have so far
                 await push_batch(batch)
 
-        # 6. Final status message
+        # 6. A run that reached LinkedIn on no combination at all is a failure, not a
+        # zero-result success. Reporting it as SUCCEEDED hides a blocked run behind an
+        # empty dataset and sends users looking for a filter problem they don't have.
+        if (
+            count == 0
+            and scraper.total_combos
+            and len(scraper.failed_combos) == scraper.total_combos
+        ):
+            await Actor.fail(
+                status_message=(
+                    f"LinkedIn blocked every one of the {scraper.total_combos} search "
+                    "combination(s) — no results could be fetched. The per-combo "
+                    "warnings above show the status codes returned. Retry, or switch "
+                    "proxy group/region if it persists."
+                )
+            )
+            return
+
+        # 7. Final status message
         msg = f"Done. Scraped {count} jobs."
         if state["failed"] > 0:
             msg += f" {state['failed']} errors encountered."
+        # A partially-degraded batch run must say so — otherwise a short result count
+        # looks like "LinkedIn had nothing" instead of "some searches never ran".
+        if scraper.failed_combos:
+            msg += (
+                f" {len(scraper.failed_combos)} of {scraper.total_combos} search"
+                " combination(s) were skipped because LinkedIn blocked their first"
+                " page; re-run to retry those."
+            )
         if (
             not is_paying
             and os.environ.get("APIFY_IS_AT_HOME") == "1"

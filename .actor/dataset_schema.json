@@ -58,6 +58,11 @@
                 "description": "The location query that produced this result (batch mode tracking).",
                 "example": "United States"
             },
+            "workplaceType": {
+                "type": "string",
+                "description": "LinkedIn's own workplace classification for this job, based on which work-arrangement bucket returned it. Reflects how the employer tagged the posting on LinkedIn, not what the job description says — descriptions often contradict the tag. Empty when no Work Arrangement filter was set.",
+                "example": "Remote (per LinkedIn)"
+            },
             "description": {
                 "type": "string",
                 "description": "Full job description as plain text. Requires fetchJobDetails: true.",
@@ -122,6 +127,7 @@
                     "postedDate",
                     "seniorityLevel",
                     "employmentType",
+                    "workplaceType",
                     "jobFunction",
                     "url"
                 ]
@@ -136,6 +142,7 @@
                     "postedDate": { "label": "Posted", "format": "text" },
                     "seniorityLevel": { "label": "Seniority", "format": "text" },
                     "employmentType": { "label": "Type", "format": "text" },
+                    "workplaceType": { "label": "Workplace", "format": "text" },
                     "jobFunction": { "label": "Function", "format": "text" },
                     "url": { "label": "URL", "format": "link" }
                 }
