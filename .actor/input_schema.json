@@ -88,7 +88,7 @@
         "workType": {
             "title": "🏠 Work Arrangement",
             "type": "string",
-            "description": "Filter by on-site, remote, or hybrid.",
+            "description": "Filter by on-site, remote, or hybrid. Uses LinkedIn's own tag on each posting — employers sometimes tag a hybrid role as Remote, so a description may still mention office days. The workplaceType output field records which bucket each result came from.",
             "editor": "select",
             "enum": ["", "1", "2", "3"],
             "enumTitles": ["All arrangements", "On-site", "Remote", "Hybrid"],

@@ -147,6 +147,9 @@ def format_job_card(data: dict[str, Any]) -> dict[str, Any]:
         # Batch tracking — which search query produced this result
         "searchKeywords": data.get("searchKeywords", ""),
         "searchLocation": data.get("searchLocation", ""),
+        # LinkedIn's own workplace classification for this row (see
+        # _WORKPLACE_TYPE_LABELS). Empty when no workType filter was applied.
+        "workplaceType": data.get("workplaceType", ""),
 
         # Full job details (when fetchJobDetails = true)
         "description": data.get("description", ""),

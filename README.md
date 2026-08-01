@@ -105,6 +105,7 @@ Each job returns a JSON object:
 
   "searchKeywords": "data engineer",
   "searchLocation": "United States",
+  "workplaceType": "Remote (per LinkedIn)",
 
   "description": "We are looking for a Senior Data Engineer...",
   "descriptionHtml": "<div class=\"show-more-less-html__markup\">...</div>",
@@ -121,6 +122,12 @@ Each job returns a JSON object:
 ```
 
 Fields `description`, `descriptionHtml`, `seniorityLevel`, `employmentType`, `jobFunction`, `industries`, `applicantCount`, `companyEmployeeCount`, `companyIndustry`, `companyLogoUrl` require `fetchJobDetails: true`. `companyEmployeeCount`, `companyIndustry`, and `companyLogoUrl` appear only when LinkedIn shows them on the job page.
+
+### On `workplaceType`
+
+`workplaceType` records which work-arrangement bucket LinkedIn returned the job from, so it is only set when you pass a `workType` filter. LinkedIn's on-site / remote / hybrid buckets are mutually exclusive, so a row labelled `Remote (per LinkedIn)` is one LinkedIn itself classifies as remote.
+
+That label reflects **how the employer tagged the posting**, not what the description says. Employers frequently tag a hybrid role as Remote and LinkedIn does not validate it, so a remote-filtered result can still mention office days in its text. There is no separate remote/hybrid flag anywhere in LinkedIn's public job data to cross-check against — if you need description-level certainty, enable `fetchJobDetails` and post-filter on `description` yourself.
 
 ---
 
