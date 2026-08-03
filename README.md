@@ -69,6 +69,103 @@ Use this actor as a live data source for AI agents:
 
 ---
 
+## Example tasks
+
+Ready-to-run configurations for common jobs. Run one as-is, then swap in
+your own keywords, locations, or companies.
+
+### 🧑‍💻 Scrape Remote Software Engineer Jobs Posted Today (US)
+
+Remote software engineer roles posted on LinkedIn in the last 24 hours,
+built for a daily feed. No login or API key.
+
+```json
+{
+  "keywords": "software engineer",
+  "location": "United States",
+  "workType": "2",
+  "datePosted": "past_24_hours",
+  "maxResults": 100
+}
+```
+
+### 📈 Find New Sales Roles Companies Are Hiring for This Week
+
+New Account Executive, SDR, and BDR openings from the past week. A company
+staffing up sales has budget: turn it into a prospect list.
+
+```json
+{
+  "keywordsList": ["account executive", "sales development representative", "business development representative"],
+  "location": "United States",
+  "datePosted": "past_week",
+  "fetchJobDetails": true,
+  "maxResultsPerSearch": 50
+}
+```
+
+### 🎯 Track Director Openings at Companies You're Watching
+
+Director openings at a named list of companies. Put each company name in the
+search so LinkedIn surfaces its jobs, then filter to Director level. Use
+distinctive company names, since `companyFilter` matches by substring.
+
+```json
+{
+  "keywordsList": ["Stripe", "Plaid", "Brex", "Marqeta", "Adyen"],
+  "location": "United States",
+  "companyFilter": ["stripe", "plaid", "brex", "marqeta", "adyen"],
+  "experienceLevel": "5",
+  "fetchJobDetails": true,
+  "maxResultsPerSearch": 100
+}
+```
+
+### 📊 Scrape Data and AI Jobs Across Top US Tech Cities
+
+Three data and AI roles across four US tech hubs in one batch run,
+deduplicated and tagged by the search that found each job.
+
+```json
+{
+  "keywordsList": ["data engineer", "data scientist", "machine learning engineer"],
+  "locationsList": ["New York, NY", "San Francisco, CA", "Austin, TX", "Seattle, WA"],
+  "datePosted": "past_month",
+  "maxResultsPerSearch": 50
+}
+```
+
+### 🕵️ Monitor One Company's New Job Postings Every Week
+
+One company's new postings from the past week. Put the company name in the
+search, filter to it, and diff run over run to read where it is scaling.
+
+```json
+{
+  "keywords": "Stripe",
+  "location": "United States",
+  "datePosted": "past_week",
+  "companyFilter": ["stripe"],
+  "maxResults": 100
+}
+```
+
+### 🏥 Build a Weekly Nursing Job Feed for Any US Metro
+
+Registered nurse and nurse practitioner roles posted this week across major
+US metros, tagged by city so rows route to the right recruiter.
+
+```json
+{
+  "keywordsList": ["registered nurse", "nurse practitioner"],
+  "locationsList": ["New York, NY", "Los Angeles, CA", "Chicago, IL", "Houston, TX"],
+  "datePosted": "past_week",
+  "maxResultsPerSearch": 50
+}
+```
+
+---
+
 ## Key features
 
 - **No API key, login, or cookies** — scrapes public pages only
