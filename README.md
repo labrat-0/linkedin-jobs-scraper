@@ -217,7 +217,21 @@ Each job returns a JSON object:
 }
 ```
 
-Fields `description`, `descriptionHtml`, `seniorityLevel`, `employmentType`, `jobFunction`, `industries`, `applicantCount`, and `companyIndustry` require `fetchJobDetails: true`. `companyEmployeeCount` requires `fetchCompanyDetails: true`. `companyEmployeeCount` and `companyIndustry` appear only when LinkedIn shows them on the job or company page.
+Fields `description`, `descriptionHtml`, `seniorityLevel`, `employmentType`, `jobFunction`, `industries`, `applicantCount`, and `companyIndustry` require `fetchJobDetails: true`. `companyEmployeeCount` requires `fetchCompanyDetails: true`. `companyEmployeeCount` and `companyIndustry` appear only when LinkedIn shows them on the job or company page. `salary` is returned without `fetchJobDetails`, but is filled in far more often with it — see [On `salary`](#on-salary).
+
+### On `salary`
+
+`salary` comes from the search card when LinkedIn prints a range there, which
+is uncommon — most cards carry no pay data at all. Enabling
+`fetchJobDetails: true` fills the gap: the job page is checked for a
+JSON-LD `baseSalary` block and then for a visible pay-range element, and
+either one is used when the card came back empty. A card value is never
+overwritten.
+
+In a 3-row sample, listing-only returned no salary on any row while detail
+mode recovered a range on 2 of 3. If pay data matters to your use case, run
+with `fetchJobDetails: true` — it costs one extra request per job. Coverage
+still depends on the employer publishing a range at all, so expect gaps.
 
 ### On `workplaceType`
 
