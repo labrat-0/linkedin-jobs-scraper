@@ -37,9 +37,10 @@ Two things to know about targeting companies:
 
 **Returns:** listing fields on every row (`jobId`, `title`, `company`,
 `companyUrl`, `location`, `postedDate`, `postedDateTimestamp`, `salary`,
-`url`, `searchKeywords`, `searchLocation`). Because `fetchJobDetails: true`,
-each row also includes `description`, `descriptionHtml`, `seniorityLevel`,
-`employmentType`, `jobFunction`, `industries`, `applicantCount`, plus
-`companyIndustry` and `companyLogoUrl` when LinkedIn shows them.
+`url`, `searchKeywords`, `searchLocation`, `workplaceType`). Because
+`fetchJobDetails: true`, each row also includes `description`,
+`descriptionHtml`, `seniorityLevel`, `employmentType`, `jobFunction`,
+`industries`, `applicantCount`, plus `companyIndustry` when LinkedIn shows it.
+`workplaceType` is empty here because no Work Arrangement filter is applied.
 
 _Validated on-platform: 29 Director-level rows across the target companies, no false matches._

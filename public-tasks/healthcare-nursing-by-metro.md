@@ -28,7 +28,8 @@
 
 **Returns:** listing fields on every row: `jobId`, `title`, `company`,
 `companyUrl`, `location`, `postedDate`, `postedDateTimestamp`, `salary`,
-`url`, `searchKeywords`, `searchLocation`. Runs listing-only. Set
+`url`, `searchKeywords`, `searchLocation`, and `workplaceType` (empty unless
+you add a Work Arrangement filter). Runs listing-only. Set
 `fetchJobDetails: true` to add `description`, `descriptionHtml`,
 `seniorityLevel`, `employmentType`, `jobFunction`, `industries`, and
 `applicantCount`.

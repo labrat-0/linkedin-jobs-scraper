@@ -129,7 +129,7 @@
         "maxResults": {
             "title": "📊 Max Results",
             "type": "integer",
-            "description": "Maximum total job listings to return. LinkedIn caps search results at 1,000 per query. Free users are limited to 25 per run.",
+            "description": "Maximum total job listings to return across the whole run. LinkedIn caps search results at 1,000 per query. Free users are limited to 25 per run. Each individual search is also capped by Max Results Per Search (default 100), so raise that too if you set this above 100.",
             "default": 100,
             "prefill": 10,
             "minimum": 1,

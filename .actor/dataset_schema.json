@@ -107,11 +107,6 @@
                 "type": "string",
                 "description": "Company industry classification. Requires fetchJobDetails: true.",
                 "example": "Financial Services"
-            },
-            "companyLogoUrl": {
-                "type": "string",
-                "description": "URL of the company logo image, when present on the job detail page. Requires fetchJobDetails: true.",
-                "example": "https://media.licdn.com/dms/image/C560BAQHaVYd13rRz3A/company-logo_200_200/0/..."
             }
         }
     },
