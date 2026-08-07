@@ -35,8 +35,7 @@ deduplicated by `jobId`.
 
 **Returns:** listing fields on every row: `jobId`, `title`, `company`,
 `companyUrl`, `location`, `postedDate`, `postedDateTimestamp`, `salary`,
-`url`, `searchKeywords`, `searchLocation`, and `workplaceType` (empty unless
-you add a Work Arrangement filter). Runs listing-only to stay fast
+`url`, `searchKeywords`, `searchLocation`. Runs listing-only to stay fast
 across the batch. Set `fetchJobDetails: true` to add `description`,
 `descriptionHtml`, `seniorityLevel`, `employmentType`, `jobFunction`,
 `industries`, and `applicantCount` (one extra request per job).

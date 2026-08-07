@@ -95,10 +95,9 @@ async def test_filters() -> None:
         keywords="software engineer",
         location="San Francisco, CA",
         date_posted="past_week",
-        job_type="F",  # Full-time
-        experience_level="4",  # Mid-Senior
-        work_type="2",  # Remote
-        fetch_job_details=False,
+        job_type="F",  # Full-time — verified client-side against employmentType
+        experience_level="4",  # Mid-Senior — verified client-side against seniorityLevel
+        fetch_job_details=True,  # required: both filters read the detail page
         max_results=3,
     )
 

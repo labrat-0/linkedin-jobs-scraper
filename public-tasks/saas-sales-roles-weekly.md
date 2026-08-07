@@ -28,10 +28,9 @@
 
 **Returns:** listing fields on every row (`jobId`, `title`, `company`,
 `companyUrl`, `location`, `postedDate`, `postedDateTimestamp`, `salary`,
-`url`, `searchKeywords`, `searchLocation`, `workplaceType`). Because
+`url`, `searchKeywords`, `searchLocation`). Because
 `fetchJobDetails: true`, each row also includes `description`,
 `descriptionHtml`, `seniorityLevel`, `employmentType`, `jobFunction`,
 `industries`, `applicantCount`, plus `companyIndustry` when LinkedIn shows it.
-`workplaceType` is empty here because no Work Arrangement filter is applied.
 
 _Validated on-platform: 15 rows with seniority and employment-type fields populated._

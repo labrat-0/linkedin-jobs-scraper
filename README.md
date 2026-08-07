@@ -13,7 +13,7 @@ This actor scrapes job listings from LinkedIn's public job search pages and retu
 - Full job description (plain text + HTML)
 - Seniority level, employment type, job function, industries
 - Applicant count
-- Company size (employee count), industry, logo (when shown on the job page)
+- Company size (employee count) and industry, when LinkedIn shows them
 
 ---
 
@@ -74,16 +74,17 @@ Use this actor as a live data source for AI agents:
 Ready-to-run configurations for common jobs. Run one as-is, then swap in
 your own keywords, locations, or companies.
 
-### 🧑‍💻 Scrape Remote Software Engineer Jobs Posted Today (US)
+### 🧑‍💻 Scrape Software Engineer Jobs Posted Today (US)
 
-Remote software engineer roles posted on LinkedIn in the last 24 hours,
-built for a daily feed. No login or API key.
+Software engineer roles posted on LinkedIn in the last 24 hours, built for a
+daily feed. No login or API key. Add `"keywords": "remote software engineer"`
+if you want remote in the search text — LinkedIn exposes no work-arrangement
+filter to logged-out clients (see [On remote / hybrid / on-site](#on-remote--hybrid--on-site)).
 
 ```json
 {
   "keywords": "software engineer",
   "location": "United States",
-  "workType": "2",
   "datePosted": "past_24_hours",
   "maxResults": 100
 }
@@ -173,7 +174,7 @@ US metros, tagged by city so rows route to the right recruiter.
 - **Parallel pagination** — search pages fetched concurrently for up to ~4x faster runs
 - **Batch search** — multiple keywords × locations in one run
 - **Full job details** — description, seniority, employment type, job function, industry, applicant count
-- **Company info** — employee count, industry, logo when shown on the job page
+- **Company info** — employee count and industry, when LinkedIn shows them
 - **Title-only filter** — keep only jobs whose title matches your keyword
 - **Description HTML** — raw HTML alongside plain text
 - **Deduplication** — jobId-based dedup across all batch searches
@@ -202,7 +203,6 @@ Each job returns a JSON object:
 
   "searchKeywords": "data engineer",
   "searchLocation": "United States",
-  "workplaceType": "Remote (per LinkedIn)",
 
   "description": "We are looking for a Senior Data Engineer...",
   "descriptionHtml": "<div class=\"show-more-less-html__markup\">...</div>",
@@ -233,11 +233,35 @@ mode recovered a range on 2 of 3. If pay data matters to your use case, run
 with `fetchJobDetails: true` — it costs one extra request per job. Coverage
 still depends on the employer publishing a range at all, so expect gaps.
 
-### On `workplaceType`
+### On remote / hybrid / on-site
 
-`workplaceType` records which work-arrangement bucket LinkedIn returned the job from, so it is only set when you pass a `workType` filter. LinkedIn's on-site / remote / hybrid buckets are mutually exclusive, so a row labelled `Remote (per LinkedIn)` is one LinkedIn itself classifies as remote.
+**This actor cannot filter by work arrangement, and does not pretend to.**
 
-That label reflects **how the employer tagged the posting**, not what the description says. Employers frequently tag a hybrid role as Remote and LinkedIn does not validate it, so a remote-filtered result can still mention office days in its text. There is no separate remote/hybrid flag anywhere in LinkedIn's public job data to cross-check against — if you need description-level certainty, enable `fetchJobDetails` and post-filter on `description` yourself.
+LinkedIn's logged-out endpoints accept a work-arrangement filter and then
+ignore it. Measured on queries small enough to show an exact total:
+
+| query | no filter | remote | on-site | hybrid |
+|---|---|---|---|---|
+| prompt engineer @ Boise, ID | 77 | 77 | 77 | 77 |
+| veterinary technician @ Missoula, MT | 89 | 89 | 89 | 89 |
+
+On-site and remote cannot both equal the unfiltered total if the filter runs.
+The returned job IDs are identical too, in the same order.
+
+Nor is the arrangement readable per job: the guest search card doesn't carry
+it, and the guest detail page ships no JSON-LD and lists only Seniority level,
+Employment type, Job function and Industries. The `Hybrid` / `Remote` chip you
+see on linkedin.com is rendered only for logged-in users.
+
+Earlier versions had a `workType` input and a `workplaceType` output column.
+Both were removed in `0.0.34`: the column was derived from the requested
+filter, not from the job, so every row of a remote-filtered run was labelled
+remote whatever the job actually was. Reporting a value we never observed was
+worse than reporting nothing.
+
+If you need this signal, enable `fetchJobDetails` and post-filter `description`
+for phrases like "hybrid", "on-site", or "days in office". That is a heuristic
+over employer prose, so treat it as a hint rather than a fact.
 
 ---
 
@@ -253,10 +277,8 @@ That label reflects **how the employer tagged the posting**, not what the descri
 | `companyFilter` | string[] | — | Whitelist companies by name or slug |
 | `titleOnly` | boolean | `false` | Keep only jobs whose **title** contains the keyword (see note below) |
 | `datePosted` | select | any | `past_24_hours`, `past_week`, `past_month` |
-| `jobType` | select | any | Full-time, Part-time, Contract, etc. |
-| `experienceLevel` | select | any | Entry, Associate, Mid-Senior, Director, etc. |
-| `workType` | select | any | On-site, Remote, Hybrid |
-| `salary` | select | any | Minimum salary filter (USD) |
+| `jobType` | select | any | Full-time, Part-time, Contract, etc. — verified per job (see note) |
+| `experienceLevel` | select | any | Entry, Associate, Mid-Senior, Director, etc. — verified per job (see note) |
 | `fetchJobDetails` | boolean | `false` | Load full detail page per job (description, criteria, applicants) |
 | `fetchCompanyDetails` | boolean | `false` | Also fetch each company's public page for employee count (one request per unique company, cached) |
 | `maxResults` | integer | 100 | Total result cap across all searches |
@@ -278,7 +300,6 @@ Search for three roles across two cities in one run:
   "keywordsList": ["python developer", "data engineer", "ML engineer"],
   "locationsList": ["New York, NY", "San Francisco, CA"],
   "datePosted": "past_week",
-  "workType": "2",
   "fetchJobDetails": true,
   "maxResultsPerSearch": 50
 }
@@ -368,6 +389,9 @@ To set timeout in Apify: go to your actor run settings → **Timeout** → set i
 
 - LinkedIn caps search pagination at 1,000 results per query — use multiple searches or tighter filters to go deeper
 - Salary data is only present when LinkedIn displays it on the listing or job page
-- Company employee count, industry, and logo appear only when LinkedIn shows them on the job page
+- Company employee count and industry appear only when LinkedIn shows them
 - `fetchJobDetails` adds one request per job — higher cost and runtime; enable only when you need the detail fields
-- Skills and recruiter/hiring-manager data are login-gated by LinkedIn and not available from public pages, so they are not included
+- `jobType` and `experienceLevel` are enforced on our side against each job's published criteria, so they require `fetchJobDetails` and can return fewer rows than `maxResults`
+- **No work-arrangement filter.** LinkedIn ignores it for logged-out clients and publishes no remote/hybrid/on-site value per job — see [On remote / hybrid / on-site](#on-remote--hybrid--on-site)
+- LinkedIn publishes no seniority for roughly half of postings (`Not Applicable`); with `experienceLevel` set, those rows are dropped and counted in the run summary
+- Skills, company logo, and recruiter/hiring-manager data are login-gated by LinkedIn and not available from public pages, so they are not included

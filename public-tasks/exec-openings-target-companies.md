@@ -34,13 +34,20 @@ Two things to know about targeting companies:
   catches "Rampart Aviation", "mercury" catches "Mercury Insurance").
 - `experienceLevel: "5"` is Director. Use `"6"` for Executive, or drop the
   field to include all seniority levels at those companies.
+- **Seniority is verified per job, not filtered by LinkedIn.** LinkedIn ignores
+  the seniority filter for logged-out clients, so the actor checks each job's
+  published "Seniority level" itself. That requires `fetchJobDetails` (switched
+  on automatically) and means every returned row genuinely says Director.
+  LinkedIn publishes no seniority on roughly half of postings, and those rows
+  are dropped rather than guessed at — expect noticeably fewer results than
+  `maxResultsPerSearch`, with the run summary reporting how many were dropped
+  and why.
 
 **Returns:** listing fields on every row (`jobId`, `title`, `company`,
 `companyUrl`, `location`, `postedDate`, `postedDateTimestamp`, `salary`,
-`url`, `searchKeywords`, `searchLocation`, `workplaceType`). Because
+`url`, `searchKeywords`, `searchLocation`). Because
 `fetchJobDetails: true`, each row also includes `description`,
 `descriptionHtml`, `seniorityLevel`, `employmentType`, `jobFunction`,
 `industries`, `applicantCount`, plus `companyIndustry` when LinkedIn shows it.
-`workplaceType` is empty here because no Work Arrangement filter is applied.
 
 _Validated on-platform: 29 Director-level rows across the target companies, no false matches._
