@@ -213,12 +213,11 @@ Each job returns a JSON object:
   "applicantCount": "Over 200 applicants",
 
   "companyEmployeeCount": "1,001-5,000 employees",
-  "companyIndustry": "Financial Services",
-  "companyLogoUrl": "https://media.licdn.com/dms/image/..."
+  "companyIndustry": "Financial Services"
 }
 ```
 
-Fields `description`, `descriptionHtml`, `seniorityLevel`, `employmentType`, `jobFunction`, `industries`, `applicantCount`, `companyEmployeeCount`, `companyIndustry`, `companyLogoUrl` require `fetchJobDetails: true`. `companyEmployeeCount`, `companyIndustry`, and `companyLogoUrl` appear only when LinkedIn shows them on the job page.
+Fields `description`, `descriptionHtml`, `seniorityLevel`, `employmentType`, `jobFunction`, `industries`, `applicantCount`, and `companyIndustry` require `fetchJobDetails: true`. `companyEmployeeCount` requires `fetchCompanyDetails: true`. `companyEmployeeCount` and `companyIndustry` appear only when LinkedIn shows them on the job or company page.
 
 ### On `workplaceType`
 
