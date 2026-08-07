@@ -11,7 +11,13 @@ from typing import Any, AsyncIterator
 import httpx
 from bs4 import BeautifulSoup, Tag
 
-from .models import ScraperInput, format_job_card
+from .models import (
+    EXPERIENCE_LEVEL_LABELS,
+    JOB_TYPE_LABELS,
+    SENIORITY_UNPUBLISHED,
+    ScraperInput,
+    format_job_card,
+)
 from .utils import (
     COMPANY_PAGE_URL,
     GUEST_API_URL,
@@ -65,23 +71,17 @@ _ENRICH_RETRIES = 1
 # Hung optional enrichment page should give up sooner than a search page (30s).
 _ENRICH_TIMEOUT = 15.0
 
-# Human-readable form of the f_WT filter, mirroring input_schema's enumTitles.
+# There is deliberately no workplace-type (remote/hybrid/on-site) output here.
 #
-# This is the ONLY available source for a job's workplace arrangement. Neither the
-# guest search card nor the guest job-detail fragment carries the tag anywhere in its
-# markup (the detail criteria list is Seniority / Employment type / Job function /
-# Industries only, and the fragment ships no JSON-LD). What we can say for certain is
-# which LinkedIn bucket a result came out of: f_WT=1/2/3 return disjoint result sets,
-# so a row returned under f_WT=2 is one LinkedIn itself classifies as Remote.
+# The guest surfaces expose no such value: the search card does not carry it, and
+# the detail fragment ships no JSON-LD and lists only Seniority level, Employment
+# type, Job function and Industries. The chip users see beside "Full-time" on
+# linkedin.com is logged-in UI.
 #
-# It therefore reports LinkedIn's classification, NOT what the job description claims —
-# employers routinely tag hybrid roles as Remote, and LinkedIn does not validate them.
-# Empty when no workType filter was set, since the bucket is then unknown.
-_WORKPLACE_TYPE_LABELS = {
-    "1": "On-site (per LinkedIn)",
-    "2": "Remote (per LinkedIn)",
-    "3": "Hybrid (per LinkedIn)",
-}
+# An earlier version derived the field from the requested f_WT bucket instead.
+# That was wrong twice over — LinkedIn ignores f_WT entirely (f_WT=1/2/3 return
+# byte-identical result sets), so the column asserted a workplace type that had
+# been read off the run's own input rather than observed in the data.
 
 
 class LinkedInJobsScraper:
@@ -113,6 +113,12 @@ class LinkedInJobsScraper:
         # carried out to the run's status message instead of raised.
         self.failed_combos: list[str] = []
         self.total_combos = 0
+        # Client-side filter accounting. Rows rejected because the published value
+        # disagreed with the request are counted apart from rows rejected because
+        # LinkedIn published nothing to compare against — a thin result set means
+        # something different in each case, so the run summary reports both.
+        self.dropped_mismatch = 0
+        self.dropped_unpublished = 0
 
     async def scrape(self) -> AsyncIterator[dict[str, Any]]:
         """Main entry point — runs all keyword/location search combinations.
@@ -200,10 +206,55 @@ class LinkedInJobsScraper:
             # Track which search produced this result (useful in batch mode)
             job["searchKeywords"] = keywords
             job["searchLocation"] = location
-            job["workplaceType"] = _WORKPLACE_TYPE_LABELS.get(self.config.work_type, "")
             to_process.append(job)
 
         return to_process, new_unique
+
+    def _detail_filter_verdict(self, job: dict[str, Any]) -> str:
+        """Judge one enriched row against the detail-page filters.
+
+        Returns "keep", "mismatch", or "unpublished". Only reachable once the
+        detail page has been fetched, since both values it reads come from the
+        job-criteria list.
+        """
+        if self.config.job_type:
+            wanted = JOB_TYPE_LABELS.get(self.config.job_type, "")
+            actual = job.get("employmentType", "").strip()
+            if not actual:
+                return "unpublished"
+            if wanted and actual.lower() != wanted.lower():
+                return "mismatch"
+
+        if self.config.experience_level:
+            wanted = EXPERIENCE_LEVEL_LABELS.get(self.config.experience_level, "")
+            actual = job.get("seniorityLevel", "").strip()
+            # LinkedIn omits seniority on roughly half of postings, marking them
+            # "Not Applicable". Such a row cannot be shown to match, so it is
+            # dropped rather than passed through on a guess.
+            if not actual or actual == SENIORITY_UNPUBLISHED:
+                return "unpublished"
+            if wanted and actual.lower() != wanted.lower():
+                return "mismatch"
+
+        return "keep"
+
+    def _apply_detail_filters(
+        self, jobs: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Drop enriched rows that fail jobType / experienceLevel, tallying why."""
+        if not self.config.has_detail_filters():
+            return jobs
+
+        kept: list[dict[str, Any]] = []
+        for job in jobs:
+            verdict = self._detail_filter_verdict(job)
+            if verdict == "keep":
+                kept.append(job)
+            elif verdict == "mismatch":
+                self.dropped_mismatch += 1
+            else:
+                self.dropped_unpublished += 1
+        return kept
 
     def _abandon_combo(
         self, label: str, statuses: list[int], auth_wall: bool = False
@@ -253,7 +304,11 @@ class LinkedInJobsScraper:
         start = 0
         consecutive_empty = 0
         unproductive_pages = 0  # consecutive pages that kept zero jobs (filter/dup-exhausted)
-        filters_active = self.config.title_only or bool(self.config.company_filter)
+        filters_active = (
+            self.config.title_only
+            or bool(self.config.company_filter)
+            or self.config.has_detail_filters()
+        )
         stop = False
 
         while count < max_results and not stop:
@@ -331,6 +386,10 @@ class LinkedInJobsScraper:
                     to_process = list(
                         await asyncio.gather(*(self._enrich(j) for j in to_process))
                     )
+
+                # jobType / experienceLevel can only be judged once the detail page
+                # is in hand, so they run here rather than in _select_page_jobs.
+                to_process = self._apply_detail_filters(to_process)
 
                 kept_this_page = len(to_process)
 

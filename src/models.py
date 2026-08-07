@@ -24,11 +24,16 @@ class ScraperInput(BaseModel):
     locations_list: list[str] = []
 
     # Filters
+    #
+    # Only datePosted is a real LinkedIn-side filter. Measured against an
+    # unfiltered baseline, the guest endpoints honour f_TPR and silently ignore
+    # f_WT, f_E, f_JT and f_SB2 — f_WT=1/2/3 return byte-identical result sets.
+    # jobType and experienceLevel are therefore enforced client-side against the
+    # detail-page criteria list; workType and salary were removed outright since
+    # nothing in the logged-out markup can back them.
     date_posted: str = ""
     job_type: str = ""
     experience_level: str = ""
-    work_type: str = ""
-    salary: str = ""
     company_filter: list[str] = []  # filter results by company name or LinkedIn slug
     title_only: bool = False  # when True, keep only jobs where keyword appears in title
 
@@ -53,8 +58,6 @@ class ScraperInput(BaseModel):
             date_posted=raw.get("datePosted", ""),
             job_type=raw.get("jobType", ""),
             experience_level=raw.get("experienceLevel", ""),
-            work_type=raw.get("workType", ""),
-            salary=raw.get("salary", ""),
             company_filter=raw.get("companyFilter", []),
             title_only=raw.get("titleOnly", False),
             fetch_job_details=raw.get("fetchJobDetails", False),
@@ -112,19 +115,47 @@ class ScraperInput(BaseModel):
         if self.date_posted and self.date_posted in date_map:
             params["f_TPR"] = date_map[self.date_posted]
 
-        if self.job_type:
-            params["f_JT"] = self.job_type
-
-        if self.experience_level:
-            params["f_E"] = self.experience_level
-
-        if self.work_type:
-            params["f_WT"] = self.work_type
-
-        if self.salary:
-            params["f_SB2"] = self.salary
+        # f_JT / f_E are deliberately NOT sent. LinkedIn's guest endpoints accept
+        # and discard them, so sending them buys nothing but an extra query param
+        # for the bot fingerprint. jobType and experienceLevel are applied in
+        # LinkedInJobsScraper._detail_filter_verdict instead.
 
         return params
+
+    def has_detail_filters(self) -> bool:
+        """True when a filter is active that can only be checked on the detail page."""
+        return bool(self.job_type or self.experience_level)
+
+
+# --- Client-side filter vocabularies ---
+#
+# LinkedIn prints these exact strings in the detail page's job-criteria list, so
+# they are what the enum codes have to be compared against. Keys mirror the
+# enum / enumTitles pairs in .actor/input_schema.json.
+
+JOB_TYPE_LABELS = {
+    "F": "Full-time",
+    "P": "Part-time",
+    "C": "Contract",
+    "T": "Temporary",
+    "V": "Volunteer",
+    "I": "Internship",
+    "O": "Other",
+}
+
+EXPERIENCE_LEVEL_LABELS = {
+    "1": "Internship",
+    "2": "Entry level",
+    "3": "Associate",
+    "4": "Mid-Senior level",
+    "5": "Director",
+    "6": "Executive",
+}
+
+# LinkedIn's placeholder when an employer published no seniority. Roughly half of
+# postings carry it, so it is a distinct outcome from "does not match" and is
+# counted separately.
+SENIORITY_UNPUBLISHED = "Not Applicable"
 
 
 # --- Output Formatting ---
@@ -147,9 +178,6 @@ def format_job_card(data: dict[str, Any]) -> dict[str, Any]:
         # Batch tracking — which search query produced this result
         "searchKeywords": data.get("searchKeywords", ""),
         "searchLocation": data.get("searchLocation", ""),
-        # LinkedIn's own workplace classification for this row (see
-        # _WORKPLACE_TYPE_LABELS). Empty when no workType filter was applied.
-        "workplaceType": data.get("workplaceType", ""),
 
         # Full job details (when fetchJobDetails = true)
         "description": data.get("description", ""),

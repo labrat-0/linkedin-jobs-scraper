@@ -38,8 +38,7 @@ How the company targeting works:
 
 **Returns:** listing fields on every row: `jobId`, `title`, `company`,
 `companyUrl`, `location`, `postedDate`, `postedDateTimestamp`, `salary`,
-`url`, `searchKeywords`, `searchLocation`, and `workplaceType` (empty unless
-you add a Work Arrangement filter). Runs listing-only for a fast
+`url`, `searchKeywords`, `searchLocation`. Runs listing-only for a fast
 weekly diff. Set `fetchJobDetails: true` for `description`,
 `seniorityLevel`, `employmentType`, `jobFunction`, `industries`,
 `applicantCount`, and `fetchCompanyDetails: true` for

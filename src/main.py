@@ -66,6 +66,19 @@ async def main() -> None:
         # Did the user ask for enrichment that the free gate will strip? Tell them.
         requested_enrichment = config.fetch_job_details or config.fetch_company_details
 
+        # jobType / experienceLevel are enforced against the detail page's criteria
+        # list (LinkedIn discards f_JT and f_E server-side), so they cannot work
+        # without it. Turn detail fetching on rather than silently returning
+        # unfiltered rows.
+        if config.has_detail_filters() and not config.fetch_job_details:
+            config.fetch_job_details = True
+            Actor.log.info(
+                "'Fetch Full Job Details' switched ON automatically: jobType and "
+                "experienceLevel are applied to each job's published Employment "
+                "type / Seniority level, which only the detail page carries. This "
+                "adds one request per job."
+            )
+
         max_results = config.max_results
         if not is_paying and os.environ.get("APIFY_IS_AT_HOME") == "1":
             max_results = min(max_results, FREE_TIER_LIMIT)
@@ -75,6 +88,17 @@ async def main() -> None:
             # reduces block exposure, and keeps free runs fast and reliable.
             config.fetch_job_details = False
             config.fetch_company_details = False
+            # Without detail pages there is nothing to check jobType /
+            # experienceLevel against. Clear them instead of dropping every row
+            # for "unpublished" — an empty dataset would be the wrong answer.
+            if config.has_detail_filters():
+                config.job_type = ""
+                config.experience_level = ""
+                Actor.log.warning(
+                    "jobType / experienceLevel are IGNORED on the free tier: they "
+                    "are verified against each job's detail page, which the free "
+                    "tier does not fetch. Results are unfiltered by those fields."
+                )
             if requested_enrichment:
                 Actor.log.warning(
                     "Fetch Full Job Details was requested but is DISABLED on the "
@@ -252,6 +276,18 @@ async def main() -> None:
                 f" {len(scraper.failed_combos)} of {scraper.total_combos} search"
                 " combination(s) were skipped because LinkedIn blocked their first"
                 " page; re-run to retry those."
+            )
+        # Client-side filtering can cut a result set well below maxResults. Say by
+        # how much and why, so a short run reads as "the filter worked" rather than
+        # "the scraper missed jobs".
+        if scraper.dropped_mismatch or scraper.dropped_unpublished:
+            msg += (
+                f" {scraper.dropped_mismatch + scraper.dropped_unpublished} job(s)"
+                " were dropped by the jobType/experienceLevel filter:"
+                f" {scraper.dropped_mismatch} did not match, and"
+                f" {scraper.dropped_unpublished} had no published Employment type /"
+                " Seniority level to check (LinkedIn omits seniority on roughly half"
+                " of postings)."
             )
         if (
             not is_paying

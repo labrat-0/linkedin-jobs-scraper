@@ -28,7 +28,11 @@
             "items": {
                 "type": "string"
             },
-            "example": ["python developer", "data engineer", "ML engineer"]
+            "example": [
+                "python developer",
+                "data engineer",
+                "ML engineer"
+            ]
         },
         "locationsList": {
             "title": "🗺️ Locations List (Batch Mode)",
@@ -38,7 +42,11 @@
             "items": {
                 "type": "string"
             },
-            "example": ["United States", "United Kingdom", "Remote"]
+            "example": [
+                "United States",
+                "United Kingdom",
+                "Remote"
+            ]
         },
         "geoId": {
             "title": "🌐 Geo ID (optional)",
@@ -54,7 +62,11 @@
             "items": {
                 "type": "string"
             },
-            "example": ["google", "meta", "stripe"]
+            "example": [
+                "google",
+                "meta",
+                "stripe"
+            ]
         },
         "datePosted": {
             "sectionCaption": "🎯 Filters",
@@ -63,44 +75,70 @@
             "type": "string",
             "description": "Filter jobs by how recently they were posted.",
             "editor": "select",
-            "enum": ["", "past_24_hours", "past_week", "past_month"],
-            "enumTitles": ["Any time", "Past 24 hours", "Past week", "Past month"],
+            "enum": [
+                "",
+                "past_24_hours",
+                "past_week",
+                "past_month"
+            ],
+            "enumTitles": [
+                "Any time",
+                "Past 24 hours",
+                "Past week",
+                "Past month"
+            ],
             "default": ""
         },
         "jobType": {
             "title": "💼 Job Type",
             "type": "string",
-            "description": "Filter by employment type.",
+            "description": "Filter by employment type. Verified against each job's published \"Employment type\" on its detail page — LinkedIn's search endpoint accepts this filter and then ignores it, so the actor enforces it itself. Turns on Fetch Full Job Details automatically (one extra request per job), and may return fewer rows than Max Results: that number is a ceiling, not a target.",
             "editor": "select",
-            "enum": ["", "F", "P", "C", "T", "V", "I", "O"],
-            "enumTitles": ["All types", "Full-time", "Part-time", "Contract", "Temporary", "Volunteer", "Internship", "Other"],
+            "enum": [
+                "",
+                "F",
+                "P",
+                "C",
+                "T",
+                "V",
+                "I",
+                "O"
+            ],
+            "enumTitles": [
+                "All types",
+                "Full-time",
+                "Part-time",
+                "Contract",
+                "Temporary",
+                "Volunteer",
+                "Internship",
+                "Other"
+            ],
             "default": ""
         },
         "experienceLevel": {
             "title": "🎓 Experience Level",
             "type": "string",
-            "description": "Filter by seniority level.",
+            "description": "Filter by seniority level. Verified against each job's published \"Seniority level\" on its detail page — LinkedIn's search endpoint accepts this filter and then ignores it, so the actor enforces it itself. LinkedIn omits seniority on roughly half of all postings; those rows are dropped rather than guessed at, and the run summary reports how many. Turns on Fetch Full Job Details automatically (one extra request per job).",
             "editor": "select",
-            "enum": ["", "1", "2", "3", "4", "5", "6"],
-            "enumTitles": ["All levels", "Internship", "Entry level", "Associate", "Mid-Senior level", "Director", "Executive"],
-            "default": ""
-        },
-        "workType": {
-            "title": "🏠 Work Arrangement",
-            "type": "string",
-            "description": "Filter by on-site, remote, or hybrid. Uses LinkedIn's own tag on each posting — employers sometimes tag a hybrid role as Remote, so a description may still mention office days. The workplaceType output field records which bucket each result came from.",
-            "editor": "select",
-            "enum": ["", "1", "2", "3"],
-            "enumTitles": ["All arrangements", "On-site", "Remote", "Hybrid"],
-            "default": ""
-        },
-        "salary": {
-            "title": "💰 Minimum Salary (USD)",
-            "type": "string",
-            "description": "Filter by minimum annual salary. Only applies to jobs where LinkedIn shows salary data.",
-            "editor": "select",
-            "enum": ["", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
-            "enumTitles": ["Any salary", "$40,000+", "$60,000+", "$80,000+", "$100,000+", "$120,000+", "$140,000+", "$160,000+", "$180,000+", "$200,000+"],
+            "enum": [
+                "",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6"
+            ],
+            "enumTitles": [
+                "All levels",
+                "Internship",
+                "Entry level",
+                "Associate",
+                "Mid-Senior level",
+                "Director",
+                "Executive"
+            ],
             "default": ""
         },
         "fetchJobDetails": {
@@ -153,7 +191,9 @@
             "editor": "proxy",
             "prefill": {
                 "useApifyProxy": true,
-                "apifyProxyGroups": ["RESIDENTIAL"]
+                "apifyProxyGroups": [
+                    "RESIDENTIAL"
+                ]
             }
         }
     },

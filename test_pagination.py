@@ -261,21 +261,106 @@ async def test_all_combos_blocked_fails_run():
     raise AssertionError("expected RuntimeError when every combo is blocked")
 
 
-async def test_workplace_type_records_linkedin_bucket():
-    """workplaceType reflects the f_WT bucket the row came from, blank when unset."""
-    pages = {0: [card(i) for i in range(3)]}
-    cfg = ScraperInput(keywords="x", location="US", fetch_job_details=False,
-                       max_results=3, max_results_per_search=3, work_type="2")
-    jobs = await collect(make_scraper(cfg, pages))
-    assert all(j["workplaceType"] == "Remote (per LinkedIn)" for j in jobs), \
-        f"expected remote label, got {[j['workplaceType'] for j in jobs]}"
+def detail_card(job_id, seniority="", employment=""):
+    """A card as it looks AFTER detail enrichment (criteria fields populated)."""
+    c = card(job_id)
+    c["seniorityLevel"] = seniority
+    c["employmentType"] = employment
+    return c
 
-    cfg_none = ScraperInput(keywords="x", location="US", fetch_job_details=False,
-                            max_results=3, max_results_per_search=3)
-    jobs = await collect(make_scraper(cfg_none, pages))
-    assert all(j["workplaceType"] == "" for j in jobs), \
-        "workplaceType must be blank when no workType filter was set"
-    print("PASS test_workplace_type_records_linkedin_bucket")
+
+def make_enriched_scraper(config, page_cards):
+    """Scraper whose enrichment is a no-op — cards already carry criteria fields.
+
+    Detail filters run on post-enrichment rows, so the fields must be present
+    without a real detail fetch.
+    """
+    sc = make_scraper(config, page_cards)
+
+    async def fake_enrich(job):
+        return job
+
+    sc._enrich = fake_enrich
+    return sc
+
+
+async def test_experience_filter_drops_mismatch_and_unpublished():
+    """experienceLevel keeps only rows LinkedIn published as that seniority.
+
+    Guards the real defect: LinkedIn accepts f_E and ignores it, so the filter
+    has to be enforced here. A row whose seniority is absent or "Not Applicable"
+    cannot be shown to match and is dropped — counted apart from a true mismatch
+    so a thin result set can be explained.
+    """
+    pages = {0: [
+        detail_card(1, seniority="Director", employment="Full-time"),
+        detail_card(2, seniority="Entry level", employment="Full-time"),
+        detail_card(3, seniority="Not Applicable", employment="Full-time"),
+        detail_card(4, seniority="", employment="Full-time"),
+        detail_card(5, seniority="Director", employment="Full-time"),
+    ]}
+    cfg = ScraperInput(keywords="x", location="US", fetch_job_details=True,
+                       max_results=10, max_results_per_search=10, experience_level="5")
+    sc = make_enriched_scraper(cfg, pages)
+    jobs = await collect(sc)
+
+    assert [j["jobId"] for j in jobs] == ["1", "5"], \
+        f"expected only the Director rows, got {[j['jobId'] for j in jobs]}"
+    assert all(j["seniorityLevel"] == "Director" for j in jobs), \
+        "a returned row did not actually carry the requested seniority"
+    assert sc.dropped_mismatch == 1, f"expected 1 mismatch, got {sc.dropped_mismatch}"
+    assert sc.dropped_unpublished == 2, \
+        f"expected 2 unpublished, got {sc.dropped_unpublished}"
+    print("PASS test_experience_filter_drops_mismatch_and_unpublished")
+
+
+async def test_job_type_filter_matches_employment_type():
+    """jobType keeps only rows whose published Employment type matches."""
+    pages = {0: [
+        detail_card(1, seniority="Associate", employment="Full-time"),
+        detail_card(2, seniority="Associate", employment="Contract"),
+        detail_card(3, seniority="Associate", employment="Internship"),
+    ]}
+    cfg = ScraperInput(keywords="x", location="US", fetch_job_details=True,
+                       max_results=10, max_results_per_search=10, job_type="C")
+    sc = make_enriched_scraper(cfg, pages)
+    jobs = await collect(sc)
+
+    assert [j["jobId"] for j in jobs] == ["2"], \
+        f"expected only the Contract row, got {[j['jobId'] for j in jobs]}"
+    assert sc.dropped_mismatch == 2, f"expected 2 mismatches, got {sc.dropped_mismatch}"
+    print("PASS test_job_type_filter_matches_employment_type")
+
+
+async def test_no_detail_filters_keeps_everything():
+    """Without jobType/experienceLevel, rows pass through untouched and uncounted."""
+    pages = {0: [
+        detail_card(1, seniority="Not Applicable", employment="Full-time"),
+        detail_card(2, seniority="Director", employment="Contract"),
+    ]}
+    cfg = ScraperInput(keywords="x", location="US", fetch_job_details=True,
+                       max_results=10, max_results_per_search=10)
+    sc = make_enriched_scraper(cfg, pages)
+    jobs = await collect(sc)
+
+    assert len(jobs) == 2, f"expected both rows, got {len(jobs)}"
+    assert sc.dropped_mismatch == 0 and sc.dropped_unpublished == 0, "nothing should be counted"
+    print("PASS test_no_detail_filters_keeps_everything")
+
+
+async def test_search_params_omit_ignored_filters():
+    """Only f_TPR is sent. LinkedIn discards f_WT/f_E/f_JT/f_SB2, so we don't send them.
+
+    Regression guard for the original bug: a mocked-network test can never prove
+    a remote API honours a param, so the actor must not derive output from one.
+    """
+    cfg = ScraperInput(keywords="x", location="US", date_posted="past_week",
+                       job_type="F", experience_level="5")
+    params = cfg.build_search_params("x", "US")
+    assert params.get("f_TPR") == "r604800", f"date filter missing: {params}"
+    for dead in ("f_WT", "f_E", "f_JT", "f_SB2"):
+        assert dead not in params, f"{dead} is ignored by LinkedIn and must not be sent"
+    print("PASS test_search_params_omit_ignored_filters")
 
 
 async def main():
@@ -287,7 +372,10 @@ async def main():
     await test_451_rotates_and_retries()
     await test_blocked_first_page_skips_only_that_combo()
     await test_all_combos_blocked_fails_run()
-    await test_workplace_type_records_linkedin_bucket()
+    await test_experience_filter_drops_mismatch_and_unpublished()
+    await test_job_type_filter_matches_employment_type()
+    await test_no_detail_filters_keeps_everything()
+    await test_search_params_omit_ignored_filters()
     print("\nALL PASSED")
 
 
