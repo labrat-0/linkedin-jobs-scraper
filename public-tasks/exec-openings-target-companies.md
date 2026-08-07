@@ -15,6 +15,7 @@
   "companyFilter": ["stripe", "plaid", "brex", "marqeta", "adyen"],
   "experienceLevel": "5",
   "fetchJobDetails": true,
+  "maxResults": 500,
   "maxResultsPerSearch": 100,
   "proxyConfiguration": {
     "useApifyProxy": true,

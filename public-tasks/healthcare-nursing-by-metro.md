@@ -18,6 +18,7 @@
     "Houston, TX"
   ],
   "datePosted": "past_week",
+  "maxResults": 400,
   "maxResultsPerSearch": 50,
   "proxyConfiguration": {
     "useApifyProxy": true,
@@ -33,4 +34,9 @@
 `seniorityLevel`, `employmentType`, `jobFunction`, `industries`, and
 `applicantCount`.
 
-_Validated on-platform: 25 rows across the metros, each tagged with its search city._
+**Set `maxResults` to cover the whole batch.** It caps the run as a whole, so
+leaving it at the default 100 stops the run after two metros. 8 searches x 50 = 400.
+
+_Validated on-platform (build 0.0.35): 400 rows, all 8 keyword x metro
+combinations covered, 100 per metro, 400 unique jobIds, every row tagged with
+its search city._

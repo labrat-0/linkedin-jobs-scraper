@@ -101,6 +101,7 @@ staffing up sales has budget: turn it into a prospect list.
   "location": "United States",
   "datePosted": "past_week",
   "fetchJobDetails": true,
+  "maxResults": 150,
   "maxResultsPerSearch": 50
 }
 ```
@@ -118,6 +119,7 @@ distinctive company names, since `companyFilter` matches by substring.
   "companyFilter": ["stripe", "plaid", "brex", "marqeta", "adyen"],
   "experienceLevel": "5",
   "fetchJobDetails": true,
+  "maxResults": 500,
   "maxResultsPerSearch": 100
 }
 ```
@@ -132,6 +134,7 @@ deduplicated and tagged by the search that found each job.
   "keywordsList": ["data engineer", "data scientist", "machine learning engineer"],
   "locationsList": ["New York, NY", "San Francisco, CA", "Austin, TX", "Seattle, WA"],
   "datePosted": "past_month",
+  "maxResults": 600,
   "maxResultsPerSearch": 50
 }
 ```
@@ -161,6 +164,7 @@ US metros, tagged by city so rows route to the right recruiter.
   "keywordsList": ["registered nurse", "nurse practitioner"],
   "locationsList": ["New York, NY", "Los Angeles, CA", "Chicago, IL", "Houston, TX"],
   "datePosted": "past_week",
+  "maxResults": 400,
   "maxResultsPerSearch": 50
 }
 ```
@@ -301,6 +305,7 @@ Search for three roles across two cities in one run:
   "locationsList": ["New York, NY", "San Francisco, CA"],
   "datePosted": "past_week",
   "fetchJobDetails": true,
+  "maxResults": 300,
   "maxResultsPerSearch": 50
 }
 ```
@@ -319,6 +324,7 @@ Find hiring decision-makers at fintech companies:
   "locationsList": ["United States"],
   "companyFilter": ["stripe", "plaid", "brex", "ramp", "mercury"],
   "fetchJobDetails": true,
+  "maxResults": 300,
   "maxResultsPerSearch": 100
 }
 ```

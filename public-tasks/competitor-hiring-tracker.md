@@ -44,4 +44,4 @@ weekly diff. Set `fetchJobDetails: true` for `description`,
 `applicantCount`, and `fetchCompanyDetails: true` for
 `companyEmployeeCount`.
 
-_Validated on-platform: 25/25 rows from the target company, cleanly filtered._
+_Validated on-platform (build 0.0.35): 43 rows, every one from Stripe — no look-alike companies leaked through `companyFilter`._
