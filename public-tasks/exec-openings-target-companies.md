@@ -50,4 +50,8 @@ Two things to know about targeting companies:
 `descriptionHtml`, `seniorityLevel`, `employmentType`, `jobFunction`,
 `industries`, `applicantCount`, plus `companyIndustry` when LinkedIn shows it.
 
-_Validated on-platform: 29 Director-level rows across the target companies, no false matches._
+_Validated on-platform (build 0.0.34): every returned row carries a published
+`seniorityLevel` of Director — verified client-side, since LinkedIn ignores the
+seniority filter itself. Expect a modest row count: in a control run, 53 of 69
+candidate jobs had no published seniority and were dropped rather than guessed
+at. The run summary reports that split every time._
