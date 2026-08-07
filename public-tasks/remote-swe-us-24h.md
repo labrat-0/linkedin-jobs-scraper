@@ -37,4 +37,9 @@ and low cost. Set `fetchJobDetails: true` to also get `description`,
 `descriptionHtml`, `seniorityLevel`, `employmentType`, `jobFunction`,
 `industries`, and `applicantCount`.
 
-_Validated on-platform: 25 rows, all posted within 24 hours._
+_Validated on-platform (build 0.0.35): 100 rows, every one posted within the
+last 24 hours. Note on precision: "remote" appeared in the job **title** on only
+7 of those 100 — LinkedIn matches the keyword anywhere in the posting, so most
+rows mention remote work somewhere rather than being titled as remote roles.
+Treat this as a broad daily feed, and narrow it with `fetchJobDetails` plus a
+description filter if you need precision._
