@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.0.38
+
+**Max Results was capped at 1,000 by mistake, and batch runs now warn instead of truncating quietly.**
+
+`maxResults` caps the whole run, but it carried LinkedIn's *per query* limit of 1,000 as its maximum. That is the limit on a single search, which `maxResultsPerSearch` already enforces. The effect was that no batch run could return more than 1,000 rows in total, however many searches it contained, and raising the number was rejected with "This field should be <= 1000".
+
+* **Max Results maximum raised from 1,000 to 10,000.** A 30 combination batch at 50 per search needs 1,500 and can now ask for it. Max Results Per Search stays at 1,000, which is LinkedIn's real per query limit.
+* **Runs now warn when the configuration truncates the batch.** If Max Results is lower than combinations x Max Results Per Search, the run logs how many combinations will not execute and the exact number to set. Nothing is changed automatically, since results are billed per item and raising your run size without asking would raise your bill.
+* Both field descriptions rewritten so the difference between the two caps is clear.
+
 ## 0.0.34 – 0.0.36
 
 **Removed filters that LinkedIn was ignoring.**

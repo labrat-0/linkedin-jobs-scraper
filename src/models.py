@@ -126,6 +126,29 @@ class ScraperInput(BaseModel):
         """True when a filter is active that can only be checked on the detail page."""
         return bool(self.job_type or self.experience_level)
 
+    def batch_shortfall(self, combos: int) -> tuple[int, int] | None:
+        """Report whether max_results is too low to run every search combination.
+
+        max_results caps the run as a whole while max_results_per_search caps
+        each combo, so a batch needs combos x per_search to finish. When it is
+        short the run simply stops mid-way and the remaining combos never
+        execute — silently, which is how published examples ended up covering
+        two of four cities.
+
+        Returns (combos_that_will_not_run, max_results_needed), or None when the
+        configuration already covers the batch. Pure so it can be tested without
+        the Actor SDK.
+        """
+        if combos <= 1:
+            return None
+        needed = combos * self.max_results_per_search
+        if self.max_results >= needed:
+            return None
+        # Combos are walked in order, so whole combos beyond this many are the
+        # ones that never start.
+        combos_that_run = self.max_results // self.max_results_per_search
+        return combos - combos_that_run, needed
+
 
 # --- Client-side filter vocabularies ---
 #
