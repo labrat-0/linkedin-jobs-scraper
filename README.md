@@ -285,11 +285,13 @@ over employer prose, so treat it as a hint rather than a fact.
 | `experienceLevel` | select | any | Entry, Associate, Mid-Senior, Director, etc. — verified per job (see note) |
 | `fetchJobDetails` | boolean | `false` | Load full detail page per job (description, criteria, applicants) |
 | `fetchCompanyDetails` | boolean | `false` | Also fetch each company's public page for employee count (one request per unique company, cached) |
-| `maxResults` | integer | 100 | Total result cap across all searches |
-| `maxResultsPerSearch` | integer | 100 | Cap per keyword/location combo (batch mode) |
+| `maxResults` | integer | 100 | Cap on the **whole run**, across every search (max 10,000) |
+| `maxResultsPerSearch` | integer | 100 | Cap per keyword/location combo; LinkedIn's own 1,000-per-query limit applies here (max 1,000) |
 | `proxyConfiguration` | object | RESIDENTIAL | Proxy settings — residential recommended |
 
 > **Using `titleOnly`?** Use **plain keywords** (e.g. `product analyst`, `growth analyst`), not Boolean strings. The title filter matches your text against the job title directly — it does **not** interpret LinkedIn Boolean operators like `AND`/`OR` or quotation marks. A keyword like `"product" AND "analyst"` with `titleOnly: true` will match nothing, because no job title literally contains that operator text. If you want Boolean search, set `titleOnly: false` and let LinkedIn's search engine handle the operators.
+
+> **Batch runs: set `maxResults` to cover the batch.** The two caps are different things. `maxResultsPerSearch` limits each keyword x location combination; `maxResults` limits the run as a whole, and the lower of the two wins. Leaving `maxResults` at its default of 100 while running 12 combinations at 50 each stops the run after two combinations, and the other ten never execute. Set `maxResults` to `combinations x maxResultsPerSearch` (12 x 50 = 600). Runs now warn at startup when the configuration would truncate, naming the value to use.
 
 > **Note on result counts with `titleOnly`:** because LinkedIn has no native title-scope filter, results are filtered on our side — a niche role can return far fewer than `maxResults`. That's expected: the run stops automatically once every matching title is found, rather than padding with description-only matches.
 

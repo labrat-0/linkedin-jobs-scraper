@@ -17,6 +17,11 @@ logger = logging.getLogger(__name__)
 # Free tier limit
 FREE_TIER_LIMIT = 25
 
+# Mirrors maxResults.maximum in .actor/input_schema.json. Used only to phrase the
+# batch-truncation warning: above this, telling the user to raise Max Results
+# would be advice they cannot follow.
+MAX_RESULTS_CEILING = 10_000
+
 # Actor owner's Apify user id. Lets the owner run the full paying-user path on the
 # platform without a paid plan, for testing. Safe to keep in a public repo: a user
 # id is not a secret, and APIFY_USER_ID is set by the platform (not user-supplied),
@@ -128,6 +133,31 @@ async def main() -> None:
             f"details={config.fetch_job_details} | "
             f"max_results={max_results}"
         )
+
+        # A batch whose maxResults can't cover every combination stops part-way
+        # through and the rest never run. Say so up front rather than letting the
+        # user discover half their cities are missing. Deliberately does NOT
+        # raise the value: results are billed per item, so growing the run
+        # without being asked would grow the customer's bill too.
+        shortfall = config.batch_shortfall(len(combos))
+        if shortfall:
+            skipped, needed = shortfall
+            if needed > MAX_RESULTS_CEILING:
+                Actor.log.warning(
+                    f"This run is configured for {len(combos)} search combinations x "
+                    f"{config.max_results_per_search} per search = {needed} results, "
+                    f"which is above the {MAX_RESULTS_CEILING} maximum for Max Results. "
+                    f"About {skipped} combination(s) will not run. Lower Max Results "
+                    "Per Search, or split the keywords/locations across several runs."
+                )
+            else:
+                Actor.log.warning(
+                    f"Max Results ({config.max_results}) is too low for this batch: "
+                    f"{len(combos)} combinations x {config.max_results_per_search} per "
+                    f"search needs {needed}. The run will stop early and about "
+                    f"{skipped} combination(s) will never execute. Set Max Results to "
+                    f"{needed} to cover the whole batch."
+                )
 
         # 3. Set up proxy
         proxy_config = None

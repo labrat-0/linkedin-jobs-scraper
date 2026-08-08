@@ -167,16 +167,16 @@
         "maxResults": {
             "title": "📊 Max Results",
             "type": "integer",
-            "description": "Maximum total job listings to return across the whole run. LinkedIn caps search results at 1,000 per query. Free users are limited to 25 per run. Each individual search is also capped by Max Results Per Search (default 100), so raise that too if you set this above 100.",
+            "description": "Cap on the TOTAL number of jobs the whole run returns, across every search. In batch mode set this to (number of keyword x location combinations) x Max Results Per Search, or the run stops once the total is reached and the remaining combinations never execute. Example: 30 combinations x 50 per search = 1500. Free users are limited to 25 per run.",
             "default": 100,
             "prefill": 10,
             "minimum": 1,
-            "maximum": 1000
+            "maximum": 10000
         },
         "maxResultsPerSearch": {
             "title": "🔢 Max Results Per Search (Batch Mode)",
             "type": "integer",
-            "description": "In batch mode (Keywords List x Locations List), this limits results per combination. Example: 3 keywords x 2 locations x 50 per search = up to 300 total results.",
+            "description": "Cap on results from EACH keyword x location combination. This is where LinkedIn's own limit applies: it returns at most 1,000 results per query. Raising this does not raise the run total — Max Results caps that separately, and the lower of the two wins. Example: 3 keywords x 2 locations x 50 per search = up to 300 results, so Max Results must be at least 300.",
             "default": 100,
             "prefill": 25,
             "minimum": 1,

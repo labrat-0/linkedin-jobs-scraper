@@ -363,6 +363,37 @@ async def test_search_params_omit_ignored_filters():
     print("PASS test_search_params_omit_ignored_filters")
 
 
+async def test_batch_shortfall_detects_truncation():
+    """maxResults below combos x perSearch truncates a batch — report it, exactly.
+
+    Regression guard for two real incidents: published examples that covered 2
+    of 4 cities with no error, and a customer told to raise maxResults past a
+    ceiling that forbade it.
+    """
+    # Covered: 3 combos x 50 = 150, and maxResults is 150.
+    ok = ScraperInput(keywords="x", location="US", max_results=150, max_results_per_search=50)
+    assert ok.batch_shortfall(3) is None, "a batch that fits must not warn"
+
+    # Short: default 100 only covers 2 of 3 combos.
+    short = ScraperInput(keywords="x", location="US", max_results=100, max_results_per_search=50)
+    assert short.batch_shortfall(3) == (1, 150), f"got {short.batch_shortfall(3)}"
+
+    # The exact shape of the published data-ai bug: 12 combos, default cap.
+    dataai = ScraperInput(keywords="x", location="US", max_results=100, max_results_per_search=50)
+    skipped, needed = dataai.batch_shortfall(12)
+    assert (skipped, needed) == (10, 600), f"got {skipped}, {needed}"
+
+    # Single search is not a batch and must never warn.
+    single = ScraperInput(keywords="x", location="US", max_results=10, max_results_per_search=1000)
+    assert single.batch_shortfall(1) is None, "single search must not warn"
+
+    # Above the schema ceiling: still reported, so the caller can reword advice.
+    huge = ScraperInput(keywords="x", location="US", max_results=1000, max_results_per_search=1000)
+    skipped, needed = huge.batch_shortfall(30)
+    assert needed == 30000 and needed > 10_000, f"got {skipped}, {needed}"
+    print("PASS test_batch_shortfall_detects_truncation")
+
+
 async def main():
     await test_order_and_cap()
     await test_dedup_stops_on_exhaustion()
@@ -376,6 +407,7 @@ async def main():
     await test_job_type_filter_matches_employment_type()
     await test_no_detail_filters_keeps_everything()
     await test_search_params_omit_ignored_filters()
+    await test_batch_shortfall_detects_truncation()
     print("\nALL PASSED")
 
 
